@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.sp
 import java.time.Duration
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import kotlin.math.roundToInt
 
 /* ============================================================
  *  1. ЛОГИКА РАСЧЁТОВ (без UI, легко тестируется)
@@ -33,6 +32,10 @@ object SleepMath {
     const val FALL_ASLEEP_MIN = 15L        // в среднем 15 минут на засыпание
     const val SOFT_ALARM_OFFSET_MIN = 10L  // «мягкий» будильник — за 10 минут до основного
     val CYCLE_RANGE = 3..7                 // 3..7 циклов = 4.5 .. 10.5 часов сна (5 вариантов)
+
+    const val FULL_SLEEP_MIN = 450L        // полноценный сон = 5 циклов = 7.5 часов
+    const val BASE_AWAKE_MIN = 16 * 60L    // после полноценного сна бодрствуем примерно 16 часов
+    const val NIGHT_CYCLES = 5             // сколько циклов советуем на ночь
 
     data class Option(val time: LocalTime, val cycles: Int)
 
@@ -51,39 +54,59 @@ object SleepMath {
     fun bedOptions(wake: LocalTime): List<Option> =
         CYCLE_RANGE.reversed().map { n -> Option(wake.minusMinutes(n * CYCLE_MIN + FALL_ASLEEP_MIN), n) }
 
-    data class AwakeReport(
-        val awakeMinutes: Long,
-        val verdict: String,
+    data class SleepForecast(
+        val sleptMinutes: Long,       // сколько человек был в постели
+        val verdict: String,          // оценка сна
         val isGood: Boolean,
-        val cycles: Int,
-        val wakeAlarm: LocalTime,
-        val softAlarm: LocalTime
+        val sleepyTime: LocalTime,    // когда захочется спать
+        val sleepyFrom: LocalTime,    // начало интервала (−30 мин)
+        val sleepyTo: LocalTime,      // конец интервала (+30 мин)
+        val cycles: Int,              // сколько циклов советуем поспать
+        val wakeAlarm: LocalTime,     // основной будильник
+        val softAlarm: LocalTime      // мягкий будильник
     )
 
     /**
-     * Анализ бодрствования между утренним подъёмом и моментом, когда захотелось спать.
-     * Если время «лёг» меньше времени «проснулся» — считаем, что это уже следующие сутки (+24 ч).
+     * Прогноз сонливости по прошлому сну.
+     *
+     * 1) Время сна = подъём − отбой (если получилось отрицательным, значит через полночь, +24 ч).
+     * 2) Реальный сон = время в постели − 15 минут на засыпание.
+     * 3) Недосып = 7.5 ч − реальный сон. За каждый недоспанный час окно бодрствования
+     *    сокращается на 45 минут (это грубая оценка, а не медицинская).
+     * 4) Захочется спать = время подъёма + окно бодрствования (16 ч минус сокращение, не менее 8 ч).
+     * 5) Если лечь в это время, то будильник = отбой + 15 мин + 5 циклов * 90 мин.
      */
-    fun analyze(wokeUp: LocalTime, wentToBed: LocalTime): AwakeReport {
-        var diff = Duration.between(wokeUp, wentToBed).toMinutes()
-        if (diff < 0) diff += 24 * 60
-        val hours = diff / 60.0
+    fun forecast(bedTime: LocalTime, wakeTime: LocalTime): SleepForecast {
+        var slept = Duration.between(bedTime, wakeTime).toMinutes()
+        if (slept < 0) slept += 24 * 60
 
-        // Оценка длины бодрствования
+        val realSleep = (slept - FALL_ASLEEP_MIN).coerceAtLeast(0L)
+        val deficit = (FULL_SLEEP_MIN - realSleep).coerceAtLeast(0L)
+        val awakeWindow = (BASE_AWAKE_MIN - deficit * 3 / 4).coerceAtLeast(8 * 60L)
+
+        val sleepy = wakeTime.plusMinutes(awakeWindow)
+
+        val hours = realSleep / 60.0
         val (text, good) = when {
-            hours < 8 -> "Вы бодрствовали ${fmt(diff)}. Это мало — возможно, ночью не хватило сна." to false
-            hours <= 16 -> "Вы бодрствовали ${fmt(diff)}. Это отличный интервал!" to true
-            hours <= 20 -> "Вы бодрствовали ${fmt(diff)}. Многовато, накопилась усталость." to false
-            else -> "Вы бодрствовали ${fmt(diff)}. Слишком долго, организм переутомлён." to false
+            hours < 5 -> "Вы спали ${fmt(slept)}. Это мало, сонливость придёт раньше обычного." to false
+            hours < 7 -> "Вы спали ${fmt(slept)}. Немного недоспали." to false
+            hours <= 9.5 -> "Вы спали ${fmt(slept)}. Отличный сон!" to true
+            else -> "Вы спали ${fmt(slept)}. Это много, возможна вялость." to false
         }
 
-        // Грубое правило: на восстановление нужно спать примерно половину времени бодрствования.
-        // Переводим в циклы по 90 минут, округляем и ограничиваем 1..6 циклами.
-        val cycles = (diff / 2.0 / CYCLE_MIN).roundToInt().coerceIn(1, 6)
-
-        // Основной будильник = отбой + 15 мин на засыпание + N*90 мин; мягкий — за 10 минут до него
-        val wake = wentToBed.plusMinutes(FALL_ASLEEP_MIN + cycles * CYCLE_MIN)
-        return AwakeReport(diff, text, good, cycles, wake, wake.minusMinutes(SOFT_ALARM_OFFSET_MIN))
+        // Если лечь в момент сонливости: отбой + 15 мин на засыпание + N*90 мин
+        val wake = sleepy.plusMinutes(FALL_ASLEEP_MIN + NIGHT_CYCLES * CYCLE_MIN)
+        return SleepForecast(
+            sleptMinutes = slept,
+            verdict = text,
+            isGood = good,
+            sleepyTime = sleepy,
+            sleepyFrom = sleepy.minusMinutes(30),
+            sleepyTo = sleepy.plusMinutes(30),
+            cycles = NIGHT_CYCLES,
+            wakeAlarm = wake,
+            softAlarm = wake.minusMinutes(SOFT_ALARM_OFFSET_MIN)
+        )
     }
 
     fun fmt(minutes: Long) = "${minutes / 60} ч ${minutes % 60} мин"
@@ -250,49 +273,54 @@ fun CyclesScreen() {
     }
 }
 
-/* ---------- Экран 2: Дневная статистика ---------- */
+/* ---------- Экран 2: Статистика (прогноз, когда захочется спать) ---------- */
 @Composable
 fun StatsScreen() {
     val ctx = LocalContext.current
-    var wokeMin by rememberSaveable { mutableIntStateOf(7 * 60) }
-    var bedMin by rememberSaveable { mutableIntStateOf(15 * 60) }
-    var report by remember { mutableStateOf<SleepMath.AwakeReport?>(null) }
+    var bedMin by rememberSaveable { mutableIntStateOf(23 * 60) }   // лёг 23:00
+    var wokeMin by rememberSaveable { mutableIntStateOf(7 * 60) }   // проснулся 07:00
+    var report by remember { mutableStateOf<SleepMath.SleepForecast?>(null) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Дневная статистика", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text("Когда захочется спать", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        TimeField("Лёг спать (вечером/ночью)", bedMin) { bedMin = it; report = null }
         TimeField("Проснулся (утром)", wokeMin) { wokeMin = it; report = null }
-        TimeField("Лёг спать (когда захотел)", bedMin) { bedMin = it; report = null }
 
         Button(
             onClick = {
-                report = SleepMath.analyze(
-                    LocalTime.ofSecondOfDay(wokeMin * 60L),
-                    LocalTime.ofSecondOfDay(bedMin * 60L)
+                report = SleepMath.forecast(
+                    LocalTime.ofSecondOfDay(bedMin * 60L),
+                    LocalTime.ofSecondOfDay(wokeMin * 60L)
                 )
             },
             modifier = Modifier.fillMaxWidth()
-        ) { Text("Рассчитать статистику") }
+        ) { Text("Рассчитать") }
 
         report?.let { r ->
             Card2 {
-                Text("Бодрствование", color = Color.Gray)
-                Text(SleepMath.fmt(r.awakeMinutes), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                Text("Сон", color = Color.Gray)
+                Text(SleepMath.fmt(r.sleptMinutes), fontSize = 30.sp, fontWeight = FontWeight.Bold)
                 Text(
                     r.verdict,
                     color = if (r.isGood) MaterialTheme.colorScheme.secondary else Color(0xFFFFB170)
                 )
             }
             Card2 {
+                Text("Захочется спать примерно в", color = Color.Gray)
+                Text(r.sleepyTime.s(), fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                Text("Интервал: ${r.sleepyFrom.s()} – ${r.sleepyTo.s()}", color = Color.Gray)
+            }
+            Card2 {
                 Text("Рекомендация", color = Color.Gray)
                 Text(
-                    "Поспите ${r.cycles} цикл. (${r.cycles * 1.5} ч). " +
+                    "Если ляжете в ${r.sleepyTime.s()}, поспите ${r.cycles} цикл. (${r.cycles * 1.5} ч). " +
                         "Будильники: ${r.softAlarm.s()} и ${r.wakeAlarm.s()}.",
                     fontSize = 16.sp
                 )
-                Button(onClick = { AlarmHelper.setTwoAlarms(ctx, r.wakeAlarm, "Подъём после сна") }) {
+                Button(onClick = { AlarmHelper.setTwoAlarms(ctx, r.wakeAlarm, "Подъём") }) {
                     Text("Поставить 2 будильника")
                 }
             }
