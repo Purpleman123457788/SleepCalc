@@ -34,7 +34,7 @@ object SleepMath {
     val CYCLE_RANGE = 3..7                 // 3..7 циклов = 4.5 .. 10.5 часов сна (5 вариантов)
 
     const val FULL_SLEEP_MIN = 450L        // полноценный сон = 5 циклов = 7.5 часов
-    const val BASE_AWAKE_MIN = 16 * 60L    // после полноценного сна бодрствуем примерно 16 часов
+    const val BASE_AWAKE_MIN = 15 * 60L    // после полноценного сна бодрствуем примерно 16 часов
     const val NIGHT_CYCLES = 5             // сколько циклов советуем на ночь
 
     data class Option(val time: LocalTime, val cycles: Int)
