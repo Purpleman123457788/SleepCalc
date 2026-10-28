@@ -467,4 +467,70 @@ fun StatsScreen(settings: Settings) {
             Card2 {
                 Text("Захочется спать примерно в", color = cs.onSurfaceVariant)
                 Text(r.sleepyTime.s(), fontSize = 56.sp, fontWeight = FontWeight.Bold)
-                Text("Интервал: ${r.slee
+                                Text("Интервал: ${r.sleepyFrom.s()} – ${r.sleepyTo.s()}", color = cs.onSurfaceVariant)
+            }
+            Card2 {
+                Text("Рекомендация", color = cs.onSurfaceVariant)
+                val alarms = if (settings.softMin > 0)
+                    "Будильники: ${r.softAlarm.s()} и ${r.wakeAlarm.s()}."
+                else
+                    "Будильник: ${r.wakeAlarm.s()}."
+                Text(
+                    "Если ляжете в ${r.sleepyTime.s()}, поспите ${r.cycles} цикл. (${r.cycles * 1.5} ч). $alarms",
+                    fontSize = 16.sp
+                )
+                Button(onClick = { AlarmHelper.setAlarms(ctx, r.wakeAlarm, "Подъём", settings.softMin) }) {
+                    Text(if (settings.softMin > 0) "Поставить 2 будильника" else "Поставить будильник")
+                }
+            }
+        }
+    }
+}
+
+/* ---------- Экран настроек ---------- */
+@Composable
+fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Text("←", fontSize = 26.sp, color = cs.onBackground)
+            }
+            Text("Настройки", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Card2 {
+            Text("Тема", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("Светлая: чёрное на белом. Тёмная: белое на чёрном.", color = cs.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OptionChip(settings.theme == 0, "Системная") { onChange(settings.copy(theme = 0)) }
+                OptionChip(settings.theme == 1, "Светлая") { onChange(settings.copy(theme = 1)) }
+                OptionChip(settings.theme == 2, "Тёмная") { onChange(settings.copy(theme = 2)) }
+            }
+        }
+
+        Card2 {
+            Text("Мягкий будильник", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("За сколько минут до основного (в минутах). «Выкл» ставит один будильник.", color = cs.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OptionChip(settings.softMin == 0, "Выкл") { onChange(settings.copy(softMin = 0)) }
+                listOf(5, 10, 15, 20).forEach { m ->
+                    OptionChip(settings.softMin == m, "$m") { onChange(settings.copy(softMin = m)) }
+                }
+            }
+        }
+
+        Card2 {
+            Text("Бодрствование после сна", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("Через сколько часов после полноценного сна обычно хочется спать (в часах).", color = cs.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(14, 15, 16, 17).forEach { h ->
+                    OptionChip(settings.awakeHours == h, "$h") { onChange(settings.copy(awakeHours = h)) }
+                }
+            }
+        }
+    }
+}
