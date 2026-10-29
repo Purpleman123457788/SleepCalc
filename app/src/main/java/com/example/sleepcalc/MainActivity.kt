@@ -23,6 +23,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -261,16 +263,20 @@ fun SleepTheme(mode: Int, content: @Composable () -> Unit) {
 /* ============================================================
  *  4. UI
  * ============================================================ */
+@OptIn(ExperimentalFoundationApi::class)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             val ctx = LocalContext.current
             var settings by remember { mutableStateOf(Settings.load(ctx)) }
-            SleepTheme(settings.theme) {
-                SleepApp(settings) { new ->
-                    settings = new
-                    new.save(ctx)
+            // Отключаем «резиновый» эффект на краях списка: прокрутка ощущается чётче
+            CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+                SleepTheme(settings.theme) {
+                    SleepApp(settings) { new ->
+                        settings = new
+                        new.save(ctx)
+                    }
                 }
             }
         }
@@ -327,13 +333,13 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
         }
     }
 }
-/** Нижние вкладки: две отдельные кнопки. Активная плавно расширяется и заливается цветом. */
+/** Нижние вкладки в стиле карточек приложения: две одинаковые кнопки, активная инвертируется. */
 @Composable
 fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
     val titles = listOf("Циклы сна", "Статистика")
-    val shape = RoundedCornerShape(26.dp)
+    val shape = RoundedCornerShape(20.dp)
 
     Row(
         Modifier.fillMaxWidth().background(cs.background)
@@ -342,21 +348,28 @@ fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
     ) {
         titles.forEachIndexed { i, title ->
             val selected = tab == i
-            val w by animateFloatAsState(
-                targetValue = if (selected) 1.35f else 1f,
-                animationSpec = spring(dampingRatio = 0.7f, stiffness = 380f),
-                label = "tabWeight"
+            val bg by animateColorAsState(
+                targetValue = if (selected) cs.primary else cs.surface,
+                animationSpec = tween(220),
+                label = "tabBg"
             )
-            val bg by animateColorAsState(if (selected) cs.primary else cs.surface, label = "tabBg")
-            val fg by animateColorAsState(if (selected) cs.onPrimary else cs.onSurfaceVariant, label = "tabFg")
-            val line by animateColorAsState(if (selected) cs.primary else cs.outlineVariant, label = "tabLine")
+            val fg by animateColorAsState(
+                targetValue = if (selected) cs.onPrimary else cs.onSurfaceVariant,
+                animationSpec = tween(220),
+                label = "tabFg"
+            )
+            val line by animateColorAsState(
+                targetValue = if (selected) cs.primary else cs.outlineVariant,
+                animationSpec = tween(220),
+                label = "tabLine"
+            )
             val iconScale by animateFloatAsState(
-                targetValue = if (selected) 1.15f else 1f,
-                animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
+                targetValue = if (selected) 1.1f else 1f,
+                animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
                 label = "iconScale"
             )
             Row(
-                Modifier.weight(w).height(56.dp)
+                Modifier.weight(1f).height(58.dp)
                     .clip(shape)
                     .background(bg)
                     .border(1.dp, line, shape)
@@ -372,7 +385,7 @@ fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
                 Box(Modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale }) {
                     TabIcon(i, fg)
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(10.dp))
                 Text(
                     title,
                     fontSize = 15.sp,
