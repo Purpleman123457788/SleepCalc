@@ -4,15 +4,23 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.provider.AlarmClock
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -38,6 +46,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -268,6 +277,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -301,7 +311,15 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
                     }
                 }
                 Box(Modifier.weight(1f)) {
-                    Crossfade(targetState = tab, label = "screen") { t ->
+                    AnimatedContent(
+                        targetState = tab,
+                        transitionSpec = {
+                            val dir = if (targetState > initialState) 1 else -1
+                            (slideInHorizontally(tween(320)) { w -> w / 5 * dir } + fadeIn(tween(320))) togetherWith
+                                (slideOutHorizontally(tween(220)) { w -> -w / 5 * dir } + fadeOut(tween(180)))
+                        },
+                        label = "screen"
+                    ) { t ->
                         if (t == 0) CyclesScreen(settings) else StatsScreen(settings)
                     }
                 }
@@ -309,65 +327,59 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
         }
     }
 }
-/** Нижние вкладки: плавающая таблетка со скользящим индикатором и иконками. */
+/** Нижние вкладки: две отдельные кнопки. Активная плавно расширяется и заливается цветом. */
 @Composable
 fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
     val titles = listOf("Циклы сна", "Статистика")
-    val pill = RoundedCornerShape(32.dp)
-    val inner = RoundedCornerShape(27.dp)
+    val shape = RoundedCornerShape(26.dp)
 
-    Box(
+    Row(
         Modifier.fillMaxWidth().background(cs.background)
-            .padding(horizontal = 24.dp, vertical = 12.dp)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        BoxWithConstraints(
-            Modifier.fillMaxWidth().height(62.dp)
-                .clip(pill)
-                .background(cs.surface)
-                .border(1.dp, cs.outlineVariant, pill)
-                .padding(5.dp)
-        ) {
-            val tabWidth = maxWidth / 2
-            val indicatorX by animateDpAsState(
-                targetValue = tabWidth * tab,
-                animationSpec = spring(dampingRatio = 0.75f, stiffness = 500f),
-                label = "indicatorX"
+        titles.forEachIndexed { i, title ->
+            val selected = tab == i
+            val w by animateFloatAsState(
+                targetValue = if (selected) 1.35f else 1f,
+                animationSpec = spring(dampingRatio = 0.7f, stiffness = 380f),
+                label = "tabWeight"
             )
-            // Скользящий белый (в тёмной теме) индикатор
-            Box(
-                Modifier.offset(x = indicatorX).width(tabWidth).fillMaxHeight()
-                    .clip(inner).background(cs.primary)
+            val bg by animateColorAsState(if (selected) cs.primary else cs.surface, label = "tabBg")
+            val fg by animateColorAsState(if (selected) cs.onPrimary else cs.onSurfaceVariant, label = "tabFg")
+            val line by animateColorAsState(if (selected) cs.primary else cs.outlineVariant, label = "tabLine")
+            val iconScale by animateFloatAsState(
+                targetValue = if (selected) 1.15f else 1f,
+                animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
+                label = "iconScale"
             )
-            Row(Modifier.fillMaxSize()) {
-                titles.forEachIndexed { i, title ->
-                    val selected = tab == i
-                    val color by animateColorAsState(
-                        targetValue = if (selected) cs.onPrimary else cs.onSurfaceVariant,
-                        label = "tabColor"
-                    )
-                    Row(
-                        Modifier.weight(1f).fillMaxHeight().clip(inner)
-                            .clickable {
-                                if (!selected) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onTab(i)
-                                }
-                            },
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TabIcon(i, color)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            title,
-                            fontSize = 15.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            color = color
-                        )
-                    }
+            Row(
+                Modifier.weight(w).height(56.dp)
+                    .clip(shape)
+                    .background(bg)
+                    .border(1.dp, line, shape)
+                    .clickable {
+                        if (!selected) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onTab(i)
+                        }
+                    },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale }) {
+                    TabIcon(i, fg)
                 }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    title,
+                    fontSize = 15.sp,
+                    maxLines = 1,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = fg
+                )
             }
         }
     }
@@ -419,6 +431,19 @@ fun Card2(content: @Composable ColumnScope.() -> Unit) = Card(
     modifier = Modifier.fillMaxWidth()
 ) { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content) }
 
+/** Плавное появление блока: прозрачность и сдвиг снизу. index задаёт задержку (каскад). */
+@Composable
+fun Reveal(index: Int, content: @Composable () -> Unit) {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val a by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(durationMillis = 380, delayMillis = index * 60),
+        label = "reveal"
+    )
+    Box(Modifier.graphicsLayer { alpha = a; translationY = (1f - a) * 48f }) { content() }
+}
+
 /** Поле выбора времени + диалог с TimePicker. Время хранится в минутах от полуночи. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -436,6 +461,13 @@ fun TimeField(label: String, minutes: Int, onChange: (Int) -> Unit) {
     }
     if (show) {
         val state = rememberTimePickerState(minutes / 60, minutes % 60, is24Hour = true)
+        val view = LocalView.current
+        var first by remember { mutableStateOf(true) }
+        // Короткий «тик» при каждом изменении часов или минут на циферблате
+        LaunchedEffect(state.hour, state.minute) {
+            if (first) first = false
+            else view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
         AlertDialog(
             onDismissRequest = { show = false },
             confirmButton = {
@@ -473,15 +505,15 @@ fun CyclesScreen(settings: Settings) {
         if (mode == 0) {
             TimeField("Лягу спать в", bedMin) { bedMin = it }
             Text("Варианты пробуждения (+15 мин на засыпание + N×90 мин):", color = cs.onSurfaceVariant)
-            wakeOpts.forEach { opt ->
-                OptionCard(opt.time.s(), opt.cycles, btnText) {
+            wakeOpts.forEachIndexed { i, opt ->
+                OptionCard(i, opt.time.s(), opt.cycles, btnText) {
                     AlarmHelper.setAlarms(ctx, opt.time, "Подъём", settings.softMin)
                 }
             }
         } else {
             TimeField("Хочу проснуться в", wakeMin) { wakeMin = it }
             Text("Во сколько нужно лечь (−N×90 мин −15 мин на засыпание):", color = cs.onSurfaceVariant)
-            bedOpts.forEach { opt -> OptionCard(opt.time.s(), opt.cycles, null, null) }
+            bedOpts.forEachIndexed { i, opt -> OptionCard(i, opt.time.s(), opt.cycles, null, null) }
             Button(
                 onClick = { AlarmHelper.setAlarms(ctx, LocalTime.ofSecondOfDay(wakeMin * 60L), "Подъём", settings.softMin) },
                 modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -492,17 +524,19 @@ fun CyclesScreen(settings: Settings) {
 
 /** Карточка варианта: время, число циклов и (если нужно) кнопка будильника. */
 @Composable
-fun OptionCard(time: String, cycles: Int, buttonText: String?, onButton: (() -> Unit)?) {
+fun OptionCard(index: Int, time: String, cycles: Int, buttonText: String?, onButton: (() -> Unit)?) {
     val cs = MaterialTheme.colorScheme
-    Card2 {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(time, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                Text("$cycles цикл. · ${cycles * 1.5} ч сна", color = cs.onSurfaceVariant)
-                if (cycles in 5..6) Text("рекомендуется", fontWeight = FontWeight.SemiBold)
-            }
-            if (buttonText != null && onButton != null) {
-                Button(onClick = onButton) { Text(buttonText) }
+    Reveal(index) {
+        Card2 {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(time, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    Text("$cycles цикл. · ${cycles * 1.5} ч сна", color = cs.onSurfaceVariant)
+                    if (cycles in 5..6) Text("рекомендуется", fontWeight = FontWeight.SemiBold)
+                }
+                if (buttonText != null && onButton != null) {
+                    Button(onClick = onButton) { Text(buttonText) }
+                }
             }
         }
     }
@@ -539,28 +573,34 @@ fun StatsScreen(settings: Settings) {
         ) { Text("Рассчитать") }
 
         report?.let { r ->
-            Card2 {
-                Text("Сон", color = cs.onSurfaceVariant)
-                Text(SleepMath.fmt(r.sleptMinutes), fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                Text(r.verdict, color = cs.onSurfaceVariant)
+            Reveal(0) {
+                Card2 {
+                    Text("Сон", color = cs.onSurfaceVariant)
+                    Text(SleepMath.fmt(r.sleptMinutes), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    Text(r.verdict, color = cs.onSurfaceVariant)
+                }
             }
-            Card2 {
-                Text("Захочется спать примерно в", color = cs.onSurfaceVariant)
-                Text(r.sleepyTime.s(), fontSize = 56.sp, fontWeight = FontWeight.Bold)
-                Text("Интервал: ${r.sleepyFrom.s()} – ${r.sleepyTo.s()}", color = cs.onSurfaceVariant)
+            Reveal(1) {
+                Card2 {
+                    Text("Захочется спать примерно в", color = cs.onSurfaceVariant)
+                    Text(r.sleepyTime.s(), fontSize = 56.sp, fontWeight = FontWeight.Bold)
+                    Text("Интервал: ${r.sleepyFrom.s()} – ${r.sleepyTo.s()}", color = cs.onSurfaceVariant)
+                }
             }
-            Card2 {
-                Text("Рекомендация", color = cs.onSurfaceVariant)
-                val alarms = if (settings.softMin > 0)
-                    "Будильники: ${r.softAlarm.s()} и ${r.wakeAlarm.s()}."
-                else
-                    "Будильник: ${r.wakeAlarm.s()}."
-                Text(
-                    "Если ляжете в ${r.sleepyTime.s()}, поспите ${r.cycles} цикл. (${r.cycles * 1.5} ч). $alarms",
-                    fontSize = 16.sp
-                )
-                Button(onClick = { AlarmHelper.setAlarms(ctx, r.wakeAlarm, "Подъём", settings.softMin) }) {
-                    Text(if (settings.softMin > 0) "Поставить 2 будильника" else "Поставить будильник")
+            Reveal(2) {
+                Card2 {
+                    Text("Рекомендация", color = cs.onSurfaceVariant)
+                    val alarms = if (settings.softMin > 0)
+                        "Будильники: ${r.softAlarm.s()} и ${r.wakeAlarm.s()}."
+                    else
+                        "Будильник: ${r.wakeAlarm.s()}."
+                    Text(
+                        "Если ляжете в ${r.sleepyTime.s()}, поспите ${r.cycles} цикл. (${r.cycles * 1.5} ч). $alarms",
+                        fontSize = 16.sp
+                    )
+                    Button(onClick = { AlarmHelper.setAlarms(ctx, r.wakeAlarm, "Подъём", settings.softMin) }) {
+                        Text(if (settings.softMin > 0) "Поставить 2 будильника" else "Поставить будильник")
+                    }
                 }
             }
         }
