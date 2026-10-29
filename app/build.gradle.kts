@@ -12,16 +12,26 @@ android {
         applicationId = "com.example.sleepcalc"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        val buildNo = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = buildNo
+        versionName = "1.$buildNo"
         resourceConfigurations += listOf("ru", "en")
+    }
+    signingConfigs {
+        create("release") {
+            storeFile = file("sleepcalc.p12")
+            storePassword = "sleepcalc2026"
+            keyAlias = "sleepcalc"
+            keyPassword = "sleepcalc2026"
+            storeType = "pkcs12"
+        }
     }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     buildFeatures { compose = true }
@@ -38,4 +48,5 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
