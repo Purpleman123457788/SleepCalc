@@ -9,7 +9,12 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,9 +31,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -288,46 +301,101 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
                     }
                 }
                 Box(Modifier.weight(1f)) {
-                    if (tab == 0) CyclesScreen(settings) else StatsScreen(settings)
+                    Crossfade(targetState = tab, label = "screen") { t ->
+                        if (t == 0) CyclesScreen(settings) else StatsScreen(settings)
+                    }
+                }
+            }
+        }
+    }
+}
+/** Нижние вкладки: плавающая таблетка со скользящим индикатором и иконками. */
+@Composable
+fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val haptic = LocalHapticFeedback.current
+    val titles = listOf("Циклы сна", "Статистика")
+    val pill = RoundedCornerShape(32.dp)
+    val inner = RoundedCornerShape(27.dp)
+
+    Box(
+        Modifier.fillMaxWidth().background(cs.background)
+            .padding(horizontal = 24.dp, vertical = 12.dp)
+    ) {
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().height(62.dp)
+                .clip(pill)
+                .background(cs.surface)
+                .border(1.dp, cs.outlineVariant, pill)
+                .padding(5.dp)
+        ) {
+            val tabWidth = maxWidth / 2
+            val indicatorX by animateDpAsState(
+                targetValue = tabWidth * tab,
+                animationSpec = spring(dampingRatio = 0.75f, stiffness = 500f),
+                label = "indicatorX"
+            )
+            // Скользящий белый (в тёмной теме) индикатор
+            Box(
+                Modifier.offset(x = indicatorX).width(tabWidth).fillMaxHeight()
+                    .clip(inner).background(cs.primary)
+            )
+            Row(Modifier.fillMaxSize()) {
+                titles.forEachIndexed { i, title ->
+                    val selected = tab == i
+                    val color by animateColorAsState(
+                        targetValue = if (selected) cs.onPrimary else cs.onSurfaceVariant,
+                        label = "tabColor"
+                    )
+                    Row(
+                        Modifier.weight(1f).fillMaxHeight().clip(inner)
+                            .clickable {
+                                if (!selected) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onTab(i)
+                                }
+                            },
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TabIcon(i, color)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            title,
+                            fontSize = 15.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = color
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-/** Нижние вкладки в виде скруглённой таблетки. */
+/** Иконки вкладок, нарисованные кодом: 0 = луна, 1 = столбики. */
 @Composable
-fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
-    val cs = MaterialTheme.colorScheme
-    Box(
-        Modifier.fillMaxWidth().background(cs.background)
-            .padding(horizontal = 20.dp, vertical = 12.dp)
-    ) {
-        Row(
-            Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(28.dp))
-                .background(cs.surface)
-                .border(1.dp, cs.outlineVariant, RoundedCornerShape(28.dp))
-                .padding(4.dp)
-        ) {
-            listOf("Циклы сна", "Статистика").forEachIndexed { i, title ->
-                val selected = tab == i
-                Box(
-                    Modifier.weight(1f)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(if (selected) cs.primary else Color.Transparent)
-                        .clickable { onTab(i) }
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        title,
-                        fontSize = 15.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (selected) cs.onPrimary else cs.onSurfaceVariant
-                    )
+fun TabIcon(index: Int, color: Color) {
+    Canvas(Modifier.size(20.dp)) {
+        val w = size.width
+        if (index == 0) {
+            val moon = Path.combine(
+                PathOperation.Difference,
+                Path().apply { addOval(Rect(Offset.Zero, size)) },
+                Path().apply {
+                    addOval(Rect(Offset(w * 0.38f, -w * 0.12f), Size(w * 0.85f, w * 0.85f)))
                 }
-            }
+            )
+            drawPath(moon, color)
+        } else {
+            val bar = w * 0.22f
+            val r = CornerRadius(w * 0.08f)
+            fun col(x: Float, h: Float) = drawRoundRect(
+                color, Offset(x * w, size.height - h * size.height), Size(bar, h * size.height), r
+            )
+            col(0.08f, 0.45f)
+            col(0.39f, 0.95f)
+            col(0.70f, 0.65f)
         }
     }
 }
@@ -389,6 +457,10 @@ fun CyclesScreen(settings: Settings) {
     var wakeMin by rememberSaveable { mutableIntStateOf(7 * 60) }   // 07:00
     val btnText = if (settings.softMin > 0) "2 будильника" else "Будильник"
 
+    // Пересчитываем варианты только когда меняется время, а не при каждой перерисовке
+    val wakeOpts = remember(bedMin) { SleepMath.wakeOptions(LocalTime.ofSecondOfDay(bedMin * 60L)) }
+    val bedOpts = remember(wakeMin) { SleepMath.bedOptions(LocalTime.ofSecondOfDay(wakeMin * 60L)) }
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -401,34 +473,15 @@ fun CyclesScreen(settings: Settings) {
         if (mode == 0) {
             TimeField("Лягу спать в", bedMin) { bedMin = it }
             Text("Варианты пробуждения (+15 мин на засыпание + N×90 мин):", color = cs.onSurfaceVariant)
-            SleepMath.wakeOptions(LocalTime.ofSecondOfDay(bedMin * 60L)).forEach { opt ->
-                Card2 {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(opt.time.s(), fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                            Text("${opt.cycles} цикл. · ${opt.cycles * 1.5} ч сна", color = cs.onSurfaceVariant)
-                            if (opt.cycles in 5..6) {
-                                Text("рекомендуется", fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        Button(onClick = { AlarmHelper.setAlarms(ctx, opt.time, "Подъём", settings.softMin) }) {
-                            Text(btnText)
-                        }
-                    }
+            wakeOpts.forEach { opt ->
+                OptionCard(opt.time.s(), opt.cycles, btnText) {
+                    AlarmHelper.setAlarms(ctx, opt.time, "Подъём", settings.softMin)
                 }
             }
         } else {
             TimeField("Хочу проснуться в", wakeMin) { wakeMin = it }
             Text("Во сколько нужно лечь (−N×90 мин −15 мин на засыпание):", color = cs.onSurfaceVariant)
-            SleepMath.bedOptions(LocalTime.ofSecondOfDay(wakeMin * 60L)).forEach { opt ->
-                Card2 {
-                    Text(opt.time.s(), fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                    Text("${opt.cycles} цикл. · ${opt.cycles * 1.5} ч сна", color = cs.onSurfaceVariant)
-                    if (opt.cycles in 5..6) {
-                        Text("рекомендуется", fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
+            bedOpts.forEach { opt -> OptionCard(opt.time.s(), opt.cycles, null, null) }
             Button(
                 onClick = { AlarmHelper.setAlarms(ctx, LocalTime.ofSecondOfDay(wakeMin * 60L), "Подъём", settings.softMin) },
                 modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -436,6 +489,25 @@ fun CyclesScreen(settings: Settings) {
         }
     }
 }
+
+/** Карточка варианта: время, число циклов и (если нужно) кнопка будильника. */
+@Composable
+fun OptionCard(time: String, cycles: Int, buttonText: String?, onButton: (() -> Unit)?) {
+    val cs = MaterialTheme.colorScheme
+    Card2 {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(time, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Text("$cycles цикл. · ${cycles * 1.5} ч сна", color = cs.onSurfaceVariant)
+                if (cycles in 5..6) Text("рекомендуется", fontWeight = FontWeight.SemiBold)
+            }
+            if (buttonText != null && onButton != null) {
+                Button(onClick = onButton) { Text(buttonText) }
+            }
+        }
+    }
+}
+
 /* ---------- Экран 2: Статистика (когда захочется спать) ---------- */
 @Composable
 fun StatsScreen(settings: Settings) {
