@@ -14,6 +14,15 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+        resourceConfigurations += listOf("ru", "en")
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
     buildFeatures { compose = true }
     compileOptions {
