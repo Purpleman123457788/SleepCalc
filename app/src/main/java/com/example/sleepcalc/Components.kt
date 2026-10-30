@@ -9,8 +9,10 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,14 +25,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalTime
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /** Короткая вибрация вибромотором (работает там, где системная вибрация отключена). */
 fun buzz(ctx: Context, ms: Long) {
@@ -79,17 +87,57 @@ fun pillColors(selected: Boolean): PillColors {
     return PillColors(bg, fg, line)
 }
 
-/** Ряд равных кнопок-переключателей, как нижние вкладки. Текст по центру. */
+/** Иконки для кнопок-переключателей: 0 = кровать (лечь спать), 1 = солнце (подъём). */
 @Composable
-fun SegmentRow(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+fun SegIcon(kind: Int, color: Color) {
+    Canvas(Modifier.size(22.dp)) {
+        val w = size.width
+        if (kind == 0) {
+            drawRoundRect(color, Offset(0.04f * w, 0.2f * w), Size(0.1f * w, 0.68f * w), CornerRadius(0.04f * w))
+            drawRoundRect(color, Offset(0.04f * w, 0.56f * w), Size(0.92f * w, 0.18f * w), CornerRadius(0.06f * w))
+            drawCircle(color, radius = 0.1f * w, center = Offset(0.3f * w, 0.42f * w))
+            drawRoundRect(color, Offset(0.46f * w, 0.4f * w), Size(0.5f * w, 0.14f * w), CornerRadius(0.05f * w))
+            drawRoundRect(color, Offset(0.86f * w, 0.7f * w), Size(0.1f * w, 0.18f * w), CornerRadius(0.03f * w))
+        } else {
+            val c = Offset(w / 2, w / 2)
+            drawCircle(color, radius = 0.2f * w, center = c)
+            for (k in 0 until 8) {
+                val a = k * (PI / 4)
+                val dx = cos(a).toFloat()
+                val dy = sin(a).toFloat()
+                drawLine(
+                    color,
+                    Offset(c.x + dx * 0.34f * w, c.y + dy * 0.34f * w),
+                    Offset(c.x + dx * 0.46f * w, c.y + dy * 0.46f * w),
+                    strokeWidth = 0.08f * w,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+    }
+}
+
+/** Ряд равных кнопок-переключателей, как нижние вкладки: иконка и текст по центру. */
+@Composable
+fun SegmentRow(
+    options: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    icons: List<Int>? = null
+) {
     val view = LocalView.current
     val shape = RoundedCornerShape(20.dp)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         options.forEachIndexed { i, label ->
             val sel = selected == i
             val c = pillColors(sel)
-            Box(
-                Modifier.weight(1f).height(52.dp)
+            val scale by animateFloatAsState(
+                targetValue = if (sel) 1.12f else 1f,
+                animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+                label = "segIcon"
+            )
+            Row(
+                Modifier.weight(1f).height(56.dp)
                     .clip(shape)
                     .background(c.bg)
                     .border(1.dp, c.line, shape)
@@ -99,13 +147,19 @@ fun SegmentRow(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
                             onSelect(i)
                         }
                     },
-                contentAlignment = Alignment.Center
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                if (icons != null && i < icons.size) {
+                    Box(Modifier.graphicsLayer { scaleX = scale; scaleY = scale }) {
+                        SegIcon(icons[i], c.fg)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
                 Text(
                     label,
-                    fontSize = 14.sp,
+                    fontSize = 15.sp,
                     maxLines = 1,
-                    textAlign = TextAlign.Center,
                     fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
                     color = c.fg
                 )
