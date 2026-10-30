@@ -56,9 +56,10 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = showSettings) { showSettings = false }
 
-    // При запуске: чистим старые загрузки и (если включено) ищем обновление
+    // При запуске: автозапись сна (если включена), чистка старых загрузок, поиск обновления
     LaunchedEffect(Unit) {
         Updater.cleanup(ctx)
+        if (settings.autoSleep) AutoSleep.importNow(ctx)
         if (settings.autoUpdate) Updater.checkNow(ctx, true)
     }
 
