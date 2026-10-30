@@ -1,5 +1,6 @@
 package com.example.sleepcalc
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,6 +12,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.launch
 
 private fun statusText(st: UpdateState): String = when (st) {
@@ -29,6 +33,25 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
     val cs = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
     val st = Updater.state
+
+    // Доступ «Статистика использования»: перепроверяем, когда возвращаемся в приложение
+    var access by remember { mutableStateOf(AutoSleep.hasAccess(ctx)) }
+    var resumes by remember { mutableIntStateOf(0) }
+    val owner = ctx as? LifecycleOwner
+    DisposableEffect(owner) {
+        val obs = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) resumes++
+        }
+        owner?.lifecycle?.addObserver(obs)
+        onDispose { owner?.lifecycle?.removeObserver(obs) }
+    }
+    LaunchedEffect(resumes) {
+        access = AutoSleep.hasAccess(ctx)
+        if (settings.autoSleep && access) {
+            val n = AutoSleep.importNow(ctx)
+            if (n > 0) Toast.makeText(ctx, "Найдено ночей: $n", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
@@ -68,6 +91,52 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(420 to "7", 450 to "7.5", 480 to "8", 540 to "9").forEach { (min, label) ->
                     OptionChip(settings.goalMin == min, label) { onChange(settings.copy(goalMin = min)) }
+                }
+            }
+        }
+
+        Card2 {
+            SwitchRow(
+                "Автоотслеживание сна",
+                "Находит ночной сон по времени выключения экрана. Без фоновой работы, батарею не тратит.",
+                settings.autoSleep
+            ) { on ->
+                onChange(settings.copy(autoSleep = on))
+                if (on) {
+                    if (access) {
+                        scope.launch {
+                            val n = AutoSleep.importNow(ctx)
+                            Toast.makeText(ctx, "Найдено ночей: $n", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        AutoSleep.openAccessSettings(ctx)
+                    }
+                }
+            }
+            if (settings.autoSleep) {
+                if (!access) {
+                    Text(
+                        "Нужен доступ «Статистика использования». Найдите в списке SleepCalc и включите.",
+                        color = cs.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = { AutoSleep.openAccessSettings(ctx) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Выдать доступ") }
+                } else {
+                    Text(
+                        "Доступ выдан. Ночи добавляются при открытии приложения (за последние 7 дней). Отбой считается по времени, когда погас экран.",
+                        color = cs.onSurfaceVariant
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val n = AutoSleep.importNow(ctx)
+                                Toast.makeText(ctx, "Найдено ночей: $n", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Обновить сейчас") }
                 }
             }
         }
