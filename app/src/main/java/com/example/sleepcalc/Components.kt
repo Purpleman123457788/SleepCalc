@@ -1,12 +1,19 @@
 package com.example.sleepcalc
 
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,9 +25,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalTime
 
-/** Короткий «тик» вибрации (если вибрация включена в настройках). */
+/** Короткая вибрация вибромотором (работает там, где системная вибрация отключена). */
+fun buzz(ctx: Context, ms: Long) {
+    try {
+        val v: Vibrator? = if (Build.VERSION.SDK_INT >= 31) {
+            (ctx.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            ctx.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+        if (v == null || !v.hasVibrator()) return
+        v.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
+    } catch (e: Exception) {
+        // вибрации нет, ничего страшного
+    }
+}
+
+/** Короткий «тик»: системный или усиленный, в зависимости от настроек и телефона. */
 fun tick(view: View) {
-    if (hapticsOn) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+    if (!hapticsOn) return
+    if (hapticStrong) buzz(view.context, 18)
+    else view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
 }
 
 @Composable
@@ -105,7 +130,15 @@ fun TimeField(label: String, minutes: Int, onChange: (Int) -> Unit) {
                 TextButton(onClick = { onChange(state.hour * 60 + state.minute); show = false }) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { show = false }) { Text("Отмена") } },
-            text = { TimePicker(state = state) }
+            text = {
+                // Прокрутка нужна на маленьких экранах и в горизонтальной ориентации
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    TimePicker(state = state)
+                }
+            }
         )
     }
 }
