@@ -1,9 +1,7 @@
 package com.example.sleepcalc
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Нижние вкладки: три одинаковые кнопки, активная инвертируется. */
+/** Нижние вкладки: три одинаковые кнопки, активная выделяется цветом. */
 @Composable
 fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
     val cs = MaterialTheme.colorScheme
@@ -45,21 +43,7 @@ fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
     ) {
         titles.forEachIndexed { i, title ->
             val selected = tab == i
-            val bg by animateColorAsState(
-                targetValue = if (selected) cs.primary else cs.surface,
-                animationSpec = tween(220),
-                label = "tabBg"
-            )
-            val fg by animateColorAsState(
-                targetValue = if (selected) cs.onPrimary else cs.onSurfaceVariant,
-                animationSpec = tween(220),
-                label = "tabFg"
-            )
-            val line by animateColorAsState(
-                targetValue = if (selected) cs.primary else cs.outlineVariant,
-                animationSpec = tween(220),
-                label = "tabLine"
-            )
+            val c = pillColors(selected)
             val iconScale by animateFloatAsState(
                 targetValue = if (selected) 1.1f else 1f,
                 animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
@@ -68,8 +52,8 @@ fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
             Column(
                 Modifier.weight(1f).height(64.dp)
                     .clip(shape)
-                    .background(bg)
-                    .border(1.dp, line, shape)
+                    .background(c.bg)
+                    .border(1.dp, c.line, shape)
                     .clickable {
                         if (!selected) {
                             tick(view)
@@ -80,7 +64,7 @@ fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
                 verticalArrangement = Arrangement.Center
             ) {
                 Box(Modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale }) {
-                    TabIcon(i, fg)
+                    TabIcon(i, c.fg)
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -88,7 +72,7 @@ fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
                     fontSize = 12.sp,
                     maxLines = 1,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                    color = fg
+                    color = c.fg
                 )
             }
         }
