@@ -18,7 +18,7 @@ import java.time.LocalTime
 fun CyclesScreen(settings: Settings) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
-    var mode by rememberSaveable { mutableIntStateOf(0) }  // 0 = лягу в, 1 = проснуться в
+    var mode by rememberSaveable { mutableIntStateOf(0) }  // 0 = лягу, 1 = проснуться
     var bedMin by remember { mutableIntStateOf(Prefs.getInt(ctx, "cyc_bed", 23 * 60)) }
     var wakeMin by remember { mutableIntStateOf(Prefs.getInt(ctx, "cyc_wake", 7 * 60)) }
     val btnText = if (settings.softMin > 0) "2 будильника" else "Будильник"
@@ -30,7 +30,12 @@ fun CyclesScreen(settings: Settings) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SegmentRow(listOf("Лягу спать в:", "Хочу проснуться в:"), mode) { mode = it }
+        SegmentRow(
+            options = listOf("Лягу спать", "Проснуться"),
+            selected = mode,
+            onSelect = { mode = it },
+            icons = listOf(0, 1)
+        )
 
         if (mode == 0) {
             TimeField("Лягу спать в", bedMin) { bedMin = it; Prefs.putInt(ctx, "cyc_bed", it) }
