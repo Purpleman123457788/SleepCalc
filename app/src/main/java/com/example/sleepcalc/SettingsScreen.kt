@@ -41,15 +41,23 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
     val cs = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
     val st = Updater.state
-    val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    val askActivity = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) SleepSensing.enable(ctx)
-    }
     val gms = remember { SleepSensing.available(ctx) }
 
     // Доступ «Статистика использования»: перепроверяем, когда возвращаемся в приложение
     var access by remember { mutableStateOf(AutoSleep.hasAccess(ctx)) }
     var resumes by remember { mutableIntStateOf(0) }
+
+    val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val askActivity = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            SleepSensing.enable(ctx)
+        } else {
+            // Без разрешения работает умный разбор экрана, ему нужен автоанализ и доступ к статистике
+            onChange(settings.copy(autoSleep = true))
+            if (!access) AutoSleep.openAccessSettings(ctx)
+        }
+    }
+
     val owner = ctx as? LifecycleOwner
     DisposableEffect(owner) {
         val obs = LifecycleEventObserver { _, event ->
@@ -184,29 +192,47 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
         Card2 {
             SwitchRow(
                 "Повышенная точность сна",
-                "Умный разбор ночи: короткие пробуждения от уведомлений не считаются вставанием. Если есть сервисы Google, подключаются датчики сна Google (движение и свет). Без микрофона и без фоновых служб.",
+                "Приложение само выбирает лучший способ для вашего телефона. С сервисами Google это датчики сна Google (движение и свет). Без них умный разбор экрана. Микрофон не используется, фоновых служб нет.",
                 settings.preciseSleep
             ) { on ->
-                onChange(settings.copy(preciseSleep = on))
                 if (on) {
+                    // Без сервисов Google движком становится разбор экрана, ему нужно автоотслеживание
+                    onChange(settings.copy(preciseSleep = true, autoSleep = if (gms) settings.autoSleep else true))
                     if (gms) {
                         if (SleepSensing.hasPermission(ctx)) {
                             SleepSensing.enable(ctx)
                         } else if (Build.VERSION.SDK_INT >= 29) {
                             askActivity.launch(Manifest.permission.ACTIVITY_RECOGNITION)
                         }
+                    } else if (!access) {
+                        AutoSleep.openAccessSettings(ctx)
+                    } else {
+                        scope.launch {
+                            val n = AutoSleep.importNow(ctx)
+                            Toast.makeText(ctx, "Найдено ночей: $n", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 } else {
+                    onChange(settings.copy(preciseSleep = false))
                     SleepSensing.disable(ctx)
                 }
             }
             if (settings.preciseSleep) {
-                Text(
-                    if (!gms) "Сервисов Google на этом телефоне нет: работает улучшенный разбор по экрану. Для него включите «Автоотслеживание сна»."
-                    else if (!SleepSensing.hasPermission(ctx)) "Нужно разрешение «Физическая активность». Разрешите его в настройках приложения."
-                    else "Датчики Google подключены. Ночь появится во вкладке «Сон» через несколько минут после пробуждения.",
-                    color = cs.onSurfaceVariant
-                )
+                val engine = when {
+                    SleepSensing.googleActive(ctx) ->
+                        "Способ: датчики сна Google плюс разбор экрана. Ночь появится во вкладке «Сон» через несколько минут после пробуждения."
+                    gms ->
+                        "Сервисы Google есть, но нет разрешения «Физическая активность». Пока работает умный разбор экрана. Чтобы подключить датчики Google, разрешите активность в настройках приложения."
+                    else ->
+                        "Способ: умный разбор экрана (сервисов Google на телефоне нет). Учитываются разблокировки и длина включений, короткие взгляды на уведомления не считаются пробуждением. Нужен доступ «Статистика использования»."
+                }
+                Text(engine, color = cs.onSurfaceVariant)
+                if (!gms && !access) {
+                    Button(
+                        onClick = { AutoSleep.openAccessSettings(ctx) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Выдать доступ") }
+                }
             }
         }
 
