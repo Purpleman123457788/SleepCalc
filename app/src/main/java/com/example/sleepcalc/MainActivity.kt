@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
                 LocalOverscrollConfiguration provides null,
                 LocalDensity provides Density(d.density, minOf(d.fontScale, 1.3f))
             ) {
-                SleepTheme(settings.theme) {
+                SleepTheme(settings.theme, settings.style) {
                     SleepApp(settings) { new ->
                         settings = new
                         new.save(ctx)
@@ -68,6 +68,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Обновляем виджет на рабочем столе, когда выходим из приложения
+        SleepWidget.refreshAll(this)
     }
 }
 
@@ -80,7 +86,7 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
     BackHandler(enabled = showSettings) { showSettings = false }
     val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
-    // При запуске: уведомления, автозапись сна, чистка загрузок, поиск обновления
+    // При запуске: уведомления, датчики сна, автозапись сна, чистка загрузок, поиск обновления
     LaunchedEffect(Unit) {
         UpdateScheduler.apply(ctx, settings.notifyUpdates)
         if (settings.notifyUpdates && Build.VERSION.SDK_INT >= 33 &&
@@ -92,6 +98,7 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
             askNotif.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         Updater.cleanup(ctx)
+        if (settings.preciseSleep) SleepSensing.enable(ctx)
         if (settings.autoSleep) AutoSleep.importNow(ctx)
         if (settings.autoUpdate || settings.notifyUpdates) Updater.checkNow(ctx, settings.autoUpdate)
     }
