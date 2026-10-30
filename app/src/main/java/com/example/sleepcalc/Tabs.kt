@@ -25,8 +25,7 @@ import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,7 +34,7 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
     val cs = MaterialTheme.colorScheme
-    val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
     val titles = listOf("Циклы", "Прогноз", "Сон")
     val shape = RoundedCornerShape(20.dp)
 
@@ -73,7 +72,7 @@ fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
                     .border(1.dp, line, shape)
                     .clickable {
                         if (!selected) {
-                            if (hapticsOn) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            tick(view)
                             onTab(i)
                         }
                     },
