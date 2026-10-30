@@ -42,6 +42,10 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
     val scope = rememberCoroutineScope()
     val st = Updater.state
     val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val askActivity = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) SleepSensing.enable(ctx)
+    }
+    val gms = remember { SleepSensing.available(ctx) }
 
     // Доступ «Статистика использования»: перепроверяем, когда возвращаемся в приложение
     var access by remember { mutableStateOf(AutoSleep.hasAccess(ctx)) }
@@ -64,7 +68,7 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
@@ -73,9 +77,22 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
             Text("Настройки", fontSize = 26.sp, fontWeight = FontWeight.Bold)
         }
 
+        // ---------- Оформление ----------
+        SectionTitle("Оформление")
+        Card2 {
+            Text("Стиль", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(
+                "Material (Google): на Android 12 и новее берёт цвета ваших обоев, на старых телефонах палитру Google.",
+                color = cs.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OptionChip(settings.style == 0, "Чёрно-белый") { onChange(settings.copy(style = 0)) }
+                OptionChip(settings.style == 1, "Material (Google)") { onChange(settings.copy(style = 1)) }
+            }
+        }
         Card2 {
             Text("Тема", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text("Светлая: чёрное на белом. Тёмная: белое на чёрном.", color = cs.onSurfaceVariant)
+            Text("Светлая или тёмная. «Системная» следует настройкам телефона.", color = cs.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OptionChip(settings.theme == 0, "Системная") { onChange(settings.copy(theme = 0)) }
                 OptionChip(settings.theme == 1, "Светлая") { onChange(settings.copy(theme = 1)) }
@@ -83,6 +100,8 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
             }
         }
 
+        // ---------- Будильники ----------
+        SectionTitle("Будильники")
         Card2 {
             Text("Мягкий будильник", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text("За сколько минут до основного (в минутах). «Выкл» ставит один будильник.", color = cs.onSurfaceVariant)
@@ -93,7 +112,6 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
                 }
             }
         }
-
         Card2 {
             Text("Два будильника", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text(
@@ -107,6 +125,8 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
             }
         }
 
+        // ---------- Сон ----------
+        SectionTitle("Сон")
         Card2 {
             Text("Норма сна", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text("Сколько часов сна вам нужно. От этого зависит дефицит и прогноз.", color = cs.onSurfaceVariant)
@@ -116,7 +136,6 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
                 }
             }
         }
-
         Card2 {
             SwitchRow(
                 "Автоотслеживание сна",
@@ -162,7 +181,37 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
                 }
             }
         }
+        Card2 {
+            SwitchRow(
+                "Повышенная точность сна",
+                "Умный разбор ночи: короткие пробуждения от уведомлений не считаются вставанием. Если есть сервисы Google, подключаются датчики сна Google (движение и свет). Без микрофона и без фоновых служб.",
+                settings.preciseSleep
+            ) { on ->
+                onChange(settings.copy(preciseSleep = on))
+                if (on) {
+                    if (gms) {
+                        if (SleepSensing.hasPermission(ctx)) {
+                            SleepSensing.enable(ctx)
+                        } else if (Build.VERSION.SDK_INT >= 29) {
+                            askActivity.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                        }
+                    }
+                } else {
+                    SleepSensing.disable(ctx)
+                }
+            }
+            if (settings.preciseSleep) {
+                Text(
+                    if (!gms) "Сервисов Google на этом телефоне нет: работает улучшенный разбор по экрану. Для него включите «Автоотслеживание сна»."
+                    else if (!SleepSensing.hasPermission(ctx)) "Нужно разрешение «Физическая активность». Разрешите его в настройках приложения."
+                    else "Датчики Google подключены. Ночь появится во вкладке «Сон» через несколько минут после пробуждения.",
+                    color = cs.onSurfaceVariant
+                )
+            }
+        }
 
+        // ---------- Приложение ----------
+        SectionTitle("Приложение")
         Card2 {
             SwitchRow(
                 "Вибрация",
@@ -184,7 +233,6 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
                 }
             }
         }
-
         Card2 {
             SwitchRow(
                 "Автообновление",
