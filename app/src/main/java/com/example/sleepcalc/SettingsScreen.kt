@@ -1,6 +1,13 @@
 package com.example.sleepcalc
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
@@ -21,7 +29,7 @@ private fun statusText(st: UpdateState): String = when (st) {
     is UpdateState.Idle -> ""
     is UpdateState.Checking -> "Проверяю…"
     is UpdateState.UpToDate -> "У вас последняя версия"
-    is UpdateState.Available -> "Доступна новая версия: ${st.name}"
+    is UpdateState.Available -> "Доступна новая версия: 1.${st.code}"
     is UpdateState.Downloading -> "Скачивание: ${st.percent}%"
     is UpdateState.Ready -> "Скачано, осталось установить"
     is UpdateState.Error -> st.message
@@ -33,6 +41,7 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
     val cs = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
     val st = Updater.state
+    val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     // Доступ «Статистика использования»: перепроверяем, когда возвращаемся в приложение
     var access by remember { mutableStateOf(AutoSleep.hasAccess(ctx)) }
@@ -82,6 +91,19 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
                 listOf(5, 10, 15, 20).forEach { m ->
                     OptionChip(settings.softMin == m, "$m") { onChange(settings.copy(softMin = m)) }
                 }
+            }
+        }
+
+        Card2 {
+            Text("Два будильника", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(
+                "Как ставить основной и мягкий. Если на вашем телефоне ставится только один, выберите «По очереди».",
+                color = cs.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OptionChip(settings.alarmMode == 0, "Авто") { onChange(settings.copy(alarmMode = 0)) }
+                OptionChip(settings.alarmMode == 1, "Быстро") { onChange(settings.copy(alarmMode = 1)) }
+                OptionChip(settings.alarmMode == 2, "По очереди") { onChange(settings.copy(alarmMode = 2)) }
             }
         }
 
@@ -147,14 +169,62 @@ fun SettingsScreen(settings: Settings, onChange: (Settings) -> Unit, onBack: () 
                 "Отклик при переключении вкладок и выборе времени",
                 settings.haptics
             ) { onChange(settings.copy(haptics = it)) }
+            if (settings.haptics) {
+                Text(
+                    "Если при выборе времени нет вибрации, выберите «Усиленная».",
+                    color = cs.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OptionChip(settings.hapticMode == 0, "Авто") { onChange(settings.copy(hapticMode = 0)) }
+                    OptionChip(settings.hapticMode == 1, "Системная") { onChange(settings.copy(hapticMode = 1)) }
+                    OptionChip(settings.hapticMode == 2, "Усиленная") {
+                        onChange(settings.copy(hapticMode = 2))
+                        buzz(ctx, 18)
+                    }
+                }
+            }
         }
 
         Card2 {
             SwitchRow(
                 "Автообновление",
-                "Проверять и устанавливать новые версии при запуске",
+                "Скачивать и устанавливать новые версии при запуске",
                 settings.autoUpdate
             ) { onChange(settings.copy(autoUpdate = it)) }
+            SwitchRow(
+                "Уведомления об обновлениях",
+                "Раз в 12 часов тихо проверяет новую версию и присылает уведомление",
+                settings.notifyUpdates
+            ) { on ->
+                onChange(settings.copy(notifyUpdates = on))
+                UpdateScheduler.apply(ctx, on)
+                if (on && Build.VERSION.SDK_INT >= 33 &&
+                    ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED
+                ) {
+                    askNotif.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+            Text(
+                "Если уведомления не приходят (Huawei, Honor, Xiaomi, Oppo, Vivo), разрешите SleepCalc автозапуск и работу в фоне в настройках батареи.",
+                fontSize = 13.sp,
+                color = cs.onSurfaceVariant
+            )
+            OutlinedButton(
+                onClick = {
+                    try {
+                        ctx.startActivity(
+                            Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:${ctx.packageName}")
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Toast.makeText(ctx, "Откройте настройки приложения вручную", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Настройки приложения") }
             Text(
                 "Версия ${Updater.versionName(ctx)} (сборка ${Updater.versionCode(ctx)})",
                 color = cs.onSurfaceVariant
