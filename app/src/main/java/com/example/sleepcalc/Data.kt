@@ -26,7 +26,8 @@ data class Settings(
     val softMin: Int = 10,          // мягкий будильник за N минут (0 = выкл)
     val goalMin: Int = 480,         // норма сна в минутах
     val haptics: Boolean = true,    // вибрация
-    val autoUpdate: Boolean = true  // автообновление
+    val autoUpdate: Boolean = true, // автообновление
+    val autoSleep: Boolean = false  // автоотслеживание сна (по умолчанию выключено)
 ) {
     companion object {
         fun load(ctx: Context): Settings {
@@ -36,7 +37,8 @@ data class Settings(
                 softMin = sp.getInt("softMin", 10),
                 goalMin = sp.getInt("goalMin", 480),
                 haptics = sp.getBoolean("haptics", true),
-                autoUpdate = sp.getBoolean("autoUpdate", true)
+                autoUpdate = sp.getBoolean("autoUpdate", true),
+                autoSleep = sp.getBoolean("autoSleep", false)
             )
         }
     }
@@ -48,6 +50,7 @@ data class Settings(
             .putInt("goalMin", goalMin)
             .putBoolean("haptics", haptics)
             .putBoolean("autoUpdate", autoUpdate)
+            .putBoolean("autoSleep", autoSleep)
             .apply()
     }
 }
@@ -58,8 +61,8 @@ fun minToZoned(m: Long): ZonedDateTime =
 
 fun minToTime(m: Long): LocalTime = minToZoned(m).toLocalTime()
 
-/** Одна ночь сна: отбой и пробуждение (минуты с 1970 года). */
-data class Night(val bed: Long, val wake: Long) {
+/** Одна ночь сна: отбой и пробуждение (минуты с 1970 года). auto = найдена автоматически. */
+data class Night(val bed: Long, val wake: Long, val auto: Boolean = false) {
     val minutes: Int get() = (wake - bed).toInt()
     val bedTime: LocalTime get() = minToTime(bed)
     val wakeTime: LocalTime get() = minToTime(wake)
@@ -78,16 +81,18 @@ object SleepLog {
         val raw = Prefs.sp(ctx).getString(KEY, "") ?: ""
         return raw.split(";").mapNotNull { p ->
             val a = p.split(",")
-            if (a.size == 2) {
+            if (a.size >= 2) {
                 val b = a[0].toLongOrNull()
                 val w = a[1].toLongOrNull()
-                if (b != null && w != null && w > b) Night(b, w) else null
+                if (b != null && w != null && w > b) Night(b, w, a.size > 2 && a[2] == "a") else null
             } else null
         }.sortedBy { it.wake }
     }
 
     private fun save(ctx: Context, list: List<Night>) {
-        val s = list.takeLast(MAX).joinToString(";") { "${it.bed},${it.wake}" }
+        val s = list.takeLast(MAX).joinToString(";") {
+            "${it.bed},${it.wake}" + if (it.auto) ",a" else ""
+        }
         Prefs.sp(ctx).edit().putString(KEY, s).apply()
     }
 
@@ -96,6 +101,18 @@ object SleepLog {
         if (n.minutes < 30 || n.minutes > 20 * 60) return false
         val list = load(ctx).filter { kotlin.math.abs(it.wake - n.wake) > 12 * 60 } + n
         save(ctx, list.sortedBy { it.wake })
+        return true
+    }
+
+    /** Автозапись: не трогает ночи, добавленные вручную; свои прежние версии заменяет. */
+    fun addAuto(ctx: Context, n: Night): Boolean {
+        if (n.minutes < 30 || n.minutes > 20 * 60) return false
+        val all = load(ctx)
+        val near = all.filter {
+            kotlin.math.abs(it.wake - n.wake) <= 14 * 60 || (it.bed < n.wake && n.bed < it.wake)
+        }
+        if (near.any { !it.auto }) return false
+        save(ctx, (all.filter { it !in near } + n).sortedBy { it.wake })
         return true
     }
 
