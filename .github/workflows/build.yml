@@ -2,6 +2,11 @@ name: Build APK
 on:
   push:
   workflow_dispatch:
+    inputs:
+      post_max:
+        description: "Опубликовать в MAX"
+        type: boolean
+        default: false
 permissions:
   contents: write
 jobs:
@@ -29,5 +34,32 @@ jobs:
         with:
           tag_name: v${{ github.run_number }}
           name: SleepCalc ${{ github.run_number }}
+          body: ${{ github.event.head_commit.message }}
           make_latest: true
           files: app/build/outputs/apk/release/app-release.apk
+      - name: Post to MAX
+        if: ${{ contains(github.event.head_commit.message, '[max]') || inputs.post_max == true }}
+        continue-on-error: true
+        env:
+          MAX_TOKEN: ${{ secrets.MAX_BOT_TOKEN }}
+          MAX_CHAT: ${{ secrets.MAX_CHAT_ID }}
+          NOTES: ${{ github.event.head_commit.message }}
+          TAG: v${{ github.run_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$MAX_TOKEN" ] || [ -z "$MAX_CHAT" ]; then
+            echo "Не заданы секреты MAX_BOT_TOKEN или MAX_CHAT_ID"
+            exit 1
+          fi
+          curl -fsS -o root.crt https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
+          curl -fsS -o sub.crt https://gu-st.ru/content/lending/russian_trusted_sub_ca_pem.crt
+          cat root.crt sub.crt > ca.pem
+          LINK="https://github.com/$REPO/releases/download/$TAG/app-release.apk"
+          CLEAN=$(printf '%s' "$NOTES" | sed 's/\[max\]//g')
+          TEXT=$(printf '**SleepCalc %s**\n\n%s\n\n[Скачать APK](%s)' "$TAG" "$CLEAN" "$LINK")
+          jq -n --arg t "$TEXT" '{text: $t, format: "markdown"}' > body.json
+          curl -sS -w '\nHTTP %{http_code}\n' --cacert ca.pem \
+            -X POST "https://platform-api2.max.ru/messages?chat_id=$MAX_CHAT" \
+            -H "Authorization: $MAX_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @body.json
