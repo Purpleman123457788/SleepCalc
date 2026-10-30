@@ -29,6 +29,13 @@ object SleepSensing {
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACTIVITY_RECOGNITION) ==
             PackageManager.PERMISSION_GRANTED
 
+    /**
+     * Работают ли сейчас датчики Google: сервисы есть, разрешение выдано, сбоев не было.
+     * Если нет, приложение само использует умный разбор экрана.
+     */
+    fun googleActive(ctx: Context): Boolean =
+        available(ctx) && hasPermission(ctx) && !Prefs.sp(ctx).getBoolean("sleepApiFail", false)
+
     private fun pending(ctx: Context): PendingIntent {
         val i = Intent(ctx, SleepReceiver::class.java)
         return PendingIntent.getBroadcast(
@@ -40,12 +47,18 @@ object SleepSensing {
     fun enable(ctx: Context) {
         if (!available(ctx) || !hasPermission(ctx)) return
         try {
-            ActivityRecognition.getClient(ctx).requestSleepSegmentUpdates(
+            val task = ActivityRecognition.getClient(ctx).requestSleepSegmentUpdates(
                 pending(ctx),
                 SleepSegmentRequest.getDefaultSleepSegmentRequest()
             )
+            task.addOnSuccessListener {
+                Prefs.sp(ctx).edit().putBoolean("sleepApiFail", false).apply()
+            }
+            task.addOnFailureListener {
+                Prefs.sp(ctx).edit().putBoolean("sleepApiFail", true).apply()
+            }
         } catch (e: Exception) {
-            // нет доступа к сервисам Google: останется разбор по экрану
+            Prefs.sp(ctx).edit().putBoolean("sleepApiFail", true).apply()
         }
     }
 
