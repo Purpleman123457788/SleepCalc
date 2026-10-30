@@ -1,6 +1,7 @@
 package com.example.sleepcalc
 
 import android.content.Context
+import android.os.Build
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -9,6 +10,20 @@ import java.time.ZonedDateTime
 
 /** Включена ли вибрация (обновляется при смене настроек). */
 var hapticsOn = true
+
+/** Использовать вибромотор напрямую (нужно на Huawei и Honor). */
+var hapticStrong = false
+
+/** Пауза между запуском двух будильников, миллисекунды. */
+var alarmGapMs = 0L
+
+/** Определение производителя телефона. */
+object Device {
+    val huaweiLike: Boolean by lazy {
+        val m = (Build.MANUFACTURER + " " + Build.BRAND).lowercase(java.util.Locale.ROOT)
+        m.contains("huawei") || m.contains("honor")
+    }
+}
 
 /** Общее хранилище настроек и последних введённых значений. */
 object Prefs {
@@ -22,12 +37,15 @@ object Prefs {
 }
 
 data class Settings(
-    val theme: Int = 2,             // 0 = как в системе, 1 = светлая, 2 = тёмная
-    val softMin: Int = 10,          // мягкий будильник за N минут (0 = выкл)
-    val goalMin: Int = 480,         // норма сна в минутах
-    val haptics: Boolean = true,    // вибрация
-    val autoUpdate: Boolean = true, // автообновление
-    val autoSleep: Boolean = false  // автоотслеживание сна (по умолчанию выключено)
+    val theme: Int = 2,               // 0 = как в системе, 1 = светлая, 2 = тёмная
+    val softMin: Int = 10,            // мягкий будильник за N минут (0 = выкл)
+    val goalMin: Int = 480,           // норма сна в минутах
+    val haptics: Boolean = true,      // вибрация
+    val hapticMode: Int = 0,          // 0 = авто, 1 = системная, 2 = усиленная
+    val alarmMode: Int = 0,           // 0 = авто, 1 = быстро, 2 = по очереди
+    val autoUpdate: Boolean = true,   // автообновление
+    val notifyUpdates: Boolean = true,// уведомления о новой версии
+    val autoSleep: Boolean = false    // автоотслеживание сна (по умолчанию выключено)
 ) {
     companion object {
         fun load(ctx: Context): Settings {
@@ -37,7 +55,10 @@ data class Settings(
                 softMin = sp.getInt("softMin", 10),
                 goalMin = sp.getInt("goalMin", 480),
                 haptics = sp.getBoolean("haptics", true),
+                hapticMode = sp.getInt("hapticMode", 0),
+                alarmMode = sp.getInt("alarmMode", 0),
                 autoUpdate = sp.getBoolean("autoUpdate", true),
+                notifyUpdates = sp.getBoolean("notifyUpdates", true),
                 autoSleep = sp.getBoolean("autoSleep", false)
             )
         }
@@ -49,7 +70,10 @@ data class Settings(
             .putInt("softMin", softMin)
             .putInt("goalMin", goalMin)
             .putBoolean("haptics", haptics)
+            .putInt("hapticMode", hapticMode)
+            .putInt("alarmMode", alarmMode)
             .putBoolean("autoUpdate", autoUpdate)
+            .putBoolean("notifyUpdates", notifyUpdates)
             .putBoolean("autoSleep", autoSleep)
             .apply()
     }
