@@ -1,15 +1,20 @@
 package com.example.sleepcalc
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+/** true, если выбран стиль Material (Google). */
+val LocalMaterialStyle = compositionLocalOf { false }
+
+// ---------- Чёрно-белый стиль ----------
 private val LightScheme = lightColorScheme(
     primary = Color(0xFF0A0A0A),
     onPrimary = Color.White,
@@ -52,14 +57,66 @@ private val DarkScheme = darkColorScheme(
     surfaceContainerHighest = Color(0xFF262626)
 )
 
+// ---------- Material (Google), запасная палитра для телефонов до Android 12 ----------
+private val GoogleLight = lightColorScheme(
+    primary = Color(0xFF0B57D0),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFD3E3FD),
+    onPrimaryContainer = Color(0xFF041E49),
+    secondary = Color(0xFF00639B),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFC2E7FF),
+    onSecondaryContainer = Color(0xFF001D35),
+    background = Color(0xFFF8FAFD),
+    onBackground = Color(0xFF1F1F1F),
+    surface = Color(0xFFF8FAFD),
+    onSurface = Color(0xFF1F1F1F),
+    surfaceVariant = Color(0xFFE1E3E1),
+    onSurfaceVariant = Color(0xFF444746),
+    outline = Color(0xFF747775),
+    outlineVariant = Color(0xFFC4C7C5),
+    surfaceContainer = Color(0xFFF0F4F9),
+    surfaceContainerHigh = Color(0xFFE9EEF6),
+    surfaceContainerHighest = Color(0xFFDDE3EA)
+)
+
+private val GoogleDark = darkColorScheme(
+    primary = Color(0xFFA8C7FA),
+    onPrimary = Color(0xFF062E6F),
+    primaryContainer = Color(0xFF0842A0),
+    onPrimaryContainer = Color(0xFFD3E3FD),
+    secondary = Color(0xFF7FCFFF),
+    onSecondary = Color(0xFF003355),
+    secondaryContainer = Color(0xFF004A77),
+    onSecondaryContainer = Color(0xFFC2E7FF),
+    background = Color(0xFF131314),
+    onBackground = Color(0xFFE3E3E3),
+    surface = Color(0xFF131314),
+    onSurface = Color(0xFFE3E3E3),
+    surfaceVariant = Color(0xFF444746),
+    onSurfaceVariant = Color(0xFFC4C7C5),
+    outline = Color(0xFF8E918F),
+    outlineVariant = Color(0xFF444746),
+    surfaceContainer = Color(0xFF1E1F20),
+    surfaceContainerHigh = Color(0xFF282A2C),
+    surfaceContainerHighest = Color(0xFF333537)
+)
+
 @Composable
-fun SleepTheme(mode: Int, content: @Composable () -> Unit) {
+fun SleepTheme(mode: Int, style: Int, content: @Composable () -> Unit) {
     val dark = when (mode) {
         1 -> false
         2 -> true
         else -> isSystemInDarkTheme()
     }
-    val scheme = if (dark) DarkScheme else LightScheme
+    val material = style == 1
+    val ctx = LocalContext.current
+    val scheme = when {
+        material && Build.VERSION.SDK_INT >= 31 ->
+            if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        material -> if (dark) GoogleDark else GoogleLight
+        else -> if (dark) DarkScheme else LightScheme
+    }
 
     // Цвет статус-бара и панели навигации в цвет фона
     val view = LocalView.current
@@ -73,5 +130,7 @@ fun SleepTheme(mode: Int, content: @Composable () -> Unit) {
             controller.isAppearanceLightNavigationBars = !dark
         }
     }
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme) {
+        CompositionLocalProvider(LocalMaterialStyle provides material) { content() }
+    }
 }
