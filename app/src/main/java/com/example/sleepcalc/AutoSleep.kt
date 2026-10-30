@@ -23,7 +23,8 @@ object AutoSleep {
     private const val SCREEN_OFF = 16   // экран выключился
     private const val MIN_QUIET = 30    // короче 30 минут паузы не считаем
     private const val MIN_SLEEP = 180   // сон не короче 3 часов
-    private const val MAX_BREAK = 20    // короткие ночные пробуждения склеиваем
+    private const val MAX_BREAK = 20    // обычный режим: короткие пробуждения склеиваем
+    private const val FALL_ASLEEP = 10  // точный режим: сдвиг на засыпание, минут
 
     /** Выдан ли доступ «Статистика использования». */
     @Suppress("DEPRECATION")
@@ -39,10 +40,14 @@ object AutoSleep {
 
     /** Открывает системную страницу, где этот доступ включается. */
     fun openAccessSettings(ctx: Context) {
-        Toast.makeText(ctx, "Найдите SleepCalc в списке и включите доступ", Toast.LENGTH_LONG).show()
-        val i = Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ctx.startActivity(i)
+        try {
+            Toast.makeText(ctx, "Найдите SleepCalc в списке и включите доступ", Toast.LENGTH_LONG).show()
+            val i = Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i)
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "Откройте: Настройки > Особые права > Доступ к данным об использовании", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun screenEvents(ctx: Context, fromMin: Long, toMin: Long): List<Pair<Long, Boolean>> {
@@ -58,8 +63,22 @@ object AutoSleep {
         return out
     }
 
+    /**
+     * Можно ли считать два тихих периода одним сном.
+     * Обычный режим: перерыв до 20 минут.
+     * Точный режим: перерыв до 12 минут, либо до 45 минут, если за это время экран включался
+     * не больше двух раз (это уведомления, а не настоящее бодрствование).
+     */
+    private fun canMerge(events: List<Pair<Long, Boolean>>, a: Gap, b: Gap, precise: Boolean): Boolean {
+        val brk = b.start - a.end
+        if (!precise) return brk <= MAX_BREAK
+        if (brk <= 12) return true
+        val glances = events.count { it.second && it.first >= a.end && it.first <= b.start }
+        return brk <= 45 && glances <= 2
+    }
+
     /** Ищет ночной сон: длинные периоды с выключенным экраном. */
-    private fun detect(events: List<Pair<Long, Boolean>>): List<Night> {
+    private fun detect(events: List<Pair<Long, Boolean>>, precise: Boolean): List<Night> {
         // 1. Периоды «экран выключен» не короче 30 минут
         val quiet = ArrayList<Gap>()
         var offAt = -1L
@@ -75,7 +94,7 @@ object AutoSleep {
         val merged = ArrayList<Gap>()
         for (g in quiet) {
             val last = merged.lastOrNull()
-            if (last != null && g.start - last.end <= MAX_BREAK) {
+            if (last != null && canMerge(events, last, g, precise)) {
                 merged[merged.size - 1] = Gap(last.start, g.end)
             } else {
                 merged.add(g)
@@ -88,7 +107,8 @@ object AutoSleep {
             val hour = minToTime(g.start).hour
             if (len < MIN_SLEEP || len > 20 * 60) continue
             if (hour in 6..17) continue
-            val n = Night(g.start, g.end, true)
+            val bed = if (precise) g.start + FALL_ASLEEP else g.start
+            val n = Night(bed, g.end, true)
             val last = result.lastOrNull()
             if (last != null && n.wake - last.wake < 14 * 60) {
                 if (n.minutes > last.minutes) result[result.size - 1] = n
@@ -102,11 +122,13 @@ object AutoSleep {
     /** Добавляет в журнал найденные ночи. Возвращает, сколько ночей добавлено или обновлено. */
     suspend fun importNow(ctx: Context): Int = withContext(Dispatchers.IO) {
         if (!hasAccess(ctx)) return@withContext 0
+        val precise = Settings.load(ctx).preciseSleep
         val now = SleepLog.nowMin()
         val sp = Prefs.sp(ctx)
         val cursor = sp.getLong("autoCursor", now - 7 * 1440)
         val from = maxOf(now - 7 * 1440, cursor - 24 * 60)
-        val found = detect(screenEvents(ctx, from, now)).filter { it.wake > cursor && it.wake <= now }
+        val found = detect(screenEvents(ctx, from, now), precise)
+            .filter { it.wake > cursor && it.wake <= now }
         var added = 0
         for (n in found) {
             if (SleepLog.addAuto(ctx, n)) added++
