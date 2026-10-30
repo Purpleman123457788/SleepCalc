@@ -60,31 +60,38 @@ object Updater {
         return c.inputStream.bufferedReader().use { it.readText() }
     }
 
-    /** Ищет последний релиз на GitHub. При autoInstall сразу скачивает и запускает установку. */
+    /** Запрашивает последний релиз. Возвращает Available, если он новее установленной версии, иначе null. */
+    suspend fun fetchLatest(ctx: Context): UpdateState.Available? {
+        val json = withContext(Dispatchers.IO) {
+            httpGet("https://api.github.com/repos/${UpdateConfig.OWNER}/${UpdateConfig.REPO}/releases/latest")
+        }
+        val obj = JSONObject(json)
+        val tag = obj.getString("tag_name")
+        val code = tag.filter { it.isDigit() }.toIntOrNull() ?: 0
+        val assets = obj.getJSONArray("assets")
+        var url = ""
+        for (i in 0 until assets.length()) {
+            val a = assets.getJSONObject(i)
+            if (a.getString("name").endsWith(".apk")) {
+                url = a.getString("browser_download_url")
+                break
+            }
+        }
+        if (url.isEmpty() || code <= versionCode(ctx)) return null
+        return UpdateState.Available(code, obj.optString("name", tag), url)
+    }
+
+    /** Ищет последний релиз. При autoInstall сразу скачивает и запускает установку. */
     suspend fun checkNow(ctx: Context, autoInstall: Boolean) {
         if (state is UpdateState.Checking || state is UpdateState.Downloading) return
         state = UpdateState.Checking
         try {
-            val json = withContext(Dispatchers.IO) {
-                httpGet("https://api.github.com/repos/${UpdateConfig.OWNER}/${UpdateConfig.REPO}/releases/latest")
-            }
-            val obj = JSONObject(json)
-            val tag = obj.getString("tag_name")
-            val code = tag.filter { it.isDigit() }.toIntOrNull() ?: 0
-            val assets = obj.getJSONArray("assets")
-            var url = ""
-            for (i in 0 until assets.length()) {
-                val a = assets.getJSONObject(i)
-                if (a.getString("name").endsWith(".apk")) {
-                    url = a.getString("browser_download_url")
-                    break
-                }
-            }
-            if (url.isEmpty() || code <= versionCode(ctx)) {
+            val av = fetchLatest(ctx)
+            if (av == null) {
                 state = UpdateState.UpToDate
                 return
             }
-            state = UpdateState.Available(code, obj.optString("name", tag), url)
+            state = av
             if (autoInstall) download(ctx)
         } catch (e: Exception) {
             state = UpdateState.Error("Не удалось проверить: ${e.message}. Проверьте интернет и что в репозитории есть релиз.")
@@ -138,24 +145,28 @@ object Updater {
 
     /** Запускает системный установщик. Если нет разрешения, открывает нужную настройку. */
     fun install(ctx: Context, file: File) {
-        if (!ctx.packageManager.canRequestPackageInstalls()) {
-            Toast.makeText(
-                ctx,
-                "Разрешите установку из этого приложения, затем вернитесь и нажмите «Установить»",
-                Toast.LENGTH_LONG
-            ).show()
-            val i = Intent(
-                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${ctx.packageName}")
-            )
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            ctx.startActivity(i)
-            return
+        try {
+            if (!ctx.packageManager.canRequestPackageInstalls()) {
+                Toast.makeText(
+                    ctx,
+                    "Разрешите установку из этого приложения, затем вернитесь и нажмите «Установить»",
+                    Toast.LENGTH_LONG
+                ).show()
+                val i = Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${ctx.packageName}")
+                )
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(i)
+                return
+            }
+            val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+            val intent = Intent(Intent.ACTION_VIEW)
+            intent.setDataAndType(uri, "application/vnd.android.package-archive")
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "Не удалось открыть установщик: ${e.message}", Toast.LENGTH_LONG).show()
         }
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
-        val intent = Intent(Intent.ACTION_VIEW)
-        intent.setDataAndType(uri, "application/vnd.android.package-archive")
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        ctx.startActivity(intent)
     }
 }
