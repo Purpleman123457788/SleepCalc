@@ -34,14 +34,39 @@
             android:exported="false" />
 
         <receiver
+            android:name=".SleepWidgetSmall"
+            android:exported="false"
+            android:label="Сон: компактный 2×2">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/sleep_widget_small_info" />
+        </receiver>
+
+        <receiver
             android:name=".SleepWidget"
-            android:exported="false">
+            android:exported="false"
+            android:label="Сон: стандартный 3×2">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/sleep_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".SleepWidgetWide"
+            android:exported="false"
+            android:label="Сон: широкий 4×2">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/sleep_widget_wide_info" />
         </receiver>
 
         <provider
