@@ -17,7 +17,9 @@ jobs:
         with:
           gradle-version: 8.9
       - name: Restore keystore
-        run: base64 -d keystore.b64 > app/sleepcalc.p12
+        run: |
+          base64 -d keystore.b64 > app/sleepcalc.p12
+          echo "83e742bb459c5f577d086cfc02539786e9ba512a5d79764855dff466aa44b2d9  app/sleepcalc.p12" | sha256sum -c -
       - run: gradle assembleRelease
       - uses: actions/upload-artifact@v4
         with:
