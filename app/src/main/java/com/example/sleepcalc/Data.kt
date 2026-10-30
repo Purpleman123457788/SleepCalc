@@ -37,21 +37,24 @@ object Prefs {
 }
 
 data class Settings(
-    val theme: Int = 2,               // 0 = как в системе, 1 = светлая, 2 = тёмная
-    val softMin: Int = 10,            // мягкий будильник за N минут (0 = выкл)
-    val goalMin: Int = 480,           // норма сна в минутах
-    val haptics: Boolean = true,      // вибрация
-    val hapticMode: Int = 0,          // 0 = авто, 1 = системная, 2 = усиленная
-    val alarmMode: Int = 0,           // 0 = авто, 1 = быстро, 2 = по очереди
-    val autoUpdate: Boolean = true,   // автообновление
-    val notifyUpdates: Boolean = true,// уведомления о новой версии
-    val autoSleep: Boolean = false    // автоотслеживание сна (по умолчанию выключено)
+    val theme: Int = 2,                // 0 = как в системе, 1 = светлая, 2 = тёмная
+    val style: Int = 0,                // 0 = чёрно-белый, 1 = Material (Google)
+    val softMin: Int = 10,             // мягкий будильник за N минут (0 = выкл)
+    val goalMin: Int = 480,            // норма сна в минутах
+    val haptics: Boolean = true,       // вибрация
+    val hapticMode: Int = 0,           // 0 = авто, 1 = системная, 2 = усиленная
+    val alarmMode: Int = 0,            // 0 = авто, 1 = быстро, 2 = по очереди
+    val autoUpdate: Boolean = true,    // автообновление
+    val notifyUpdates: Boolean = true, // уведомления о новой версии
+    val autoSleep: Boolean = false,    // автоотслеживание сна (по умолчанию выключено)
+    val preciseSleep: Boolean = false  // повышенная точность сна (по умолчанию выключено)
 ) {
     companion object {
         fun load(ctx: Context): Settings {
             val sp = Prefs.sp(ctx)
             return Settings(
                 theme = sp.getInt("theme", 2),
+                style = sp.getInt("style", 0),
                 softMin = sp.getInt("softMin", 10),
                 goalMin = sp.getInt("goalMin", 480),
                 haptics = sp.getBoolean("haptics", true),
@@ -59,7 +62,8 @@ data class Settings(
                 alarmMode = sp.getInt("alarmMode", 0),
                 autoUpdate = sp.getBoolean("autoUpdate", true),
                 notifyUpdates = sp.getBoolean("notifyUpdates", true),
-                autoSleep = sp.getBoolean("autoSleep", false)
+                autoSleep = sp.getBoolean("autoSleep", false),
+                preciseSleep = sp.getBoolean("preciseSleep", false)
             )
         }
     }
@@ -67,6 +71,7 @@ data class Settings(
     fun save(ctx: Context) {
         Prefs.sp(ctx).edit()
             .putInt("theme", theme)
+            .putInt("style", style)
             .putInt("softMin", softMin)
             .putInt("goalMin", goalMin)
             .putBoolean("haptics", haptics)
@@ -75,6 +80,7 @@ data class Settings(
             .putBoolean("autoUpdate", autoUpdate)
             .putBoolean("notifyUpdates", notifyUpdates)
             .putBoolean("autoSleep", autoSleep)
+            .putBoolean("preciseSleep", preciseSleep)
             .apply()
     }
 }
@@ -85,8 +91,16 @@ fun minToZoned(m: Long): ZonedDateTime =
 
 fun minToTime(m: Long): LocalTime = minToZoned(m).toLocalTime()
 
-/** Одна ночь сна: отбой и пробуждение (минуты с 1970 года). auto = найдена автоматически. */
-data class Night(val bed: Long, val wake: Long, val auto: Boolean = false) {
+/**
+ * Одна ночь сна: отбой и пробуждение (минуты с 1970 года).
+ * auto = найдена автоматически, sensor = по данным датчиков Google.
+ */
+data class Night(
+    val bed: Long,
+    val wake: Long,
+    val auto: Boolean = false,
+    val sensor: Boolean = false
+) {
     val minutes: Int get() = (wake - bed).toInt()
     val bedTime: LocalTime get() = minToTime(bed)
     val wakeTime: LocalTime get() = minToTime(wake)
@@ -108,14 +122,15 @@ object SleepLog {
             if (a.size >= 2) {
                 val b = a[0].toLongOrNull()
                 val w = a[1].toLongOrNull()
-                if (b != null && w != null && w > b) Night(b, w, a.size > 2 && a[2] == "a") else null
+                val t = if (a.size > 2) a[2] else ""
+                if (b != null && w != null && w > b) Night(b, w, t == "a" || t == "g", t == "g") else null
             } else null
         }.sortedBy { it.wake }
     }
 
     private fun save(ctx: Context, list: List<Night>) {
         val s = list.takeLast(MAX).joinToString(";") {
-            "${it.bed},${it.wake}" + if (it.auto) ",a" else ""
+            "${it.bed},${it.wake}" + if (it.sensor) ",g" else if (it.auto) ",a" else ""
         }
         Prefs.sp(ctx).edit().putString(KEY, s).apply()
     }
@@ -128,8 +143,20 @@ object SleepLog {
         return true
     }
 
-    /** Автозапись: не трогает ночи, добавленные вручную; свои прежние версии заменяет. */
+    /** Автозапись по экрану: не трогает ночи, добавленные вручную или найденные датчиками. */
     fun addAuto(ctx: Context, n: Night): Boolean {
+        if (n.minutes < 30 || n.minutes > 20 * 60) return false
+        val all = load(ctx)
+        val near = all.filter {
+            kotlin.math.abs(it.wake - n.wake) <= 14 * 60 || (it.bed < n.wake && n.bed < it.wake)
+        }
+        if (near.any { !it.auto || it.sensor }) return false
+        save(ctx, (all.filter { it !in near } + n).sortedBy { it.wake })
+        return true
+    }
+
+    /** Ночь по датчикам Google: точнее экрана, заменяет автозаписи по экрану, ручные не трогает. */
+    fun addSensor(ctx: Context, n: Night): Boolean {
         if (n.minutes < 30 || n.minutes > 20 * 60) return false
         val all = load(ctx)
         val near = all.filter {
