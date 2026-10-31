@@ -10,12 +10,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollConfiguration
@@ -72,7 +75,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        // Обновляем виджет на рабочем столе, когда выходим из приложения
+        // Обновляем виджеты на рабочем столе, когда выходим из приложения
         SleepWidget.refreshAll(this)
     }
 }
@@ -113,45 +116,71 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
         Box(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
-                bottomBar = { if (!showSettings) BottomTabs(tab) { tab = it } }
+                bottomBar = {
+                    // Вкладки уезжают вниз при открытии настроек и возвращаются обратно
+                    AnimatedVisibility(
+                        visible = !showSettings,
+                        enter = slideInVertically(tween(300)) { h -> h } + fadeIn(tween(300)),
+                        exit = slideOutVertically(tween(220)) { h -> h } + fadeOut(tween(180))
+                    ) {
+                        BottomTabs(tab) { tab = it }
+                    }
+                }
             ) { padding ->
-                Column(Modifier.padding(padding).fillMaxSize()) {
-                    if (showSettings) {
-                        SettingsScreen(settings, onSettingsChange) { showSettings = false }
-                    } else {
-                        Row(
-                            Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                titles[tab],
-                                fontSize = 26.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(onClick = { showSettings = true }) {
-                                Icon(
-                                    Icons.Default.Settings,
-                                    contentDescription = "Настройки",
-                                    tint = MaterialTheme.colorScheme.onBackground
-                                )
+                Box(Modifier.padding(padding).fillMaxSize()) {
+                    // Настройки выезжают справа, основной экран слегка сдвигается влево
+                    AnimatedContent(
+                        targetState = showSettings,
+                        transitionSpec = {
+                            if (targetState) {
+                                (slideInHorizontally(tween(320)) { w -> w } + fadeIn(tween(320))) togetherWith
+                                    (slideOutHorizontally(tween(320)) { w -> -w / 4 } + fadeOut(tween(200)))
+                            } else {
+                                (slideInHorizontally(tween(320)) { w -> -w / 4 } + fadeIn(tween(320))) togetherWith
+                                    (slideOutHorizontally(tween(320)) { w -> w } + fadeOut(tween(200)))
                             }
-                        }
-                        UpdateBanner()
-                        Box(Modifier.weight(1f)) {
-                            AnimatedContent(
-                                targetState = tab,
-                                transitionSpec = {
-                                    val dir = if (targetState > initialState) 1 else -1
-                                    (slideInHorizontally(tween(320)) { w -> w / 5 * dir } + fadeIn(tween(320))) togetherWith
-                                        (slideOutHorizontally(tween(220)) { w -> -w / 5 * dir } + fadeOut(tween(180)))
-                                },
-                                label = "screen"
-                            ) { t ->
-                                when (t) {
-                                    0 -> CyclesScreen(settings)
-                                    1 -> ForecastScreen(settings)
-                                    else -> SleepScreen(settings)
+                        },
+                        label = "settings"
+                    ) { inSettings ->
+                        if (inSettings) {
+                            SettingsScreen(settings, onSettingsChange) { showSettings = false }
+                        } else {
+                            Column(Modifier.fillMaxSize()) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        titles[tab],
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(onClick = { showSettings = true }) {
+                                        Icon(
+                                            Icons.Default.Settings,
+                                            contentDescription = "Настройки",
+                                            tint = MaterialTheme.colorScheme.onBackground
+                                        )
+                                    }
+                                }
+                                UpdateBanner()
+                                Box(Modifier.weight(1f)) {
+                                    AnimatedContent(
+                                        targetState = tab,
+                                        transitionSpec = {
+                                            val dir = if (targetState > initialState) 1 else -1
+                                            (slideInHorizontally(tween(320)) { w -> w / 5 * dir } + fadeIn(tween(320))) togetherWith
+                                                (slideOutHorizontally(tween(220)) { w -> -w / 5 * dir } + fadeOut(tween(180)))
+                                        },
+                                        label = "screen"
+                                    ) { t ->
+                                        when (t) {
+                                            0 -> CyclesScreen(settings)
+                                            1 -> ForecastScreen(settings)
+                                            else -> SleepScreen(settings)
+                                        }
+                                    }
                                 }
                             }
                         }
