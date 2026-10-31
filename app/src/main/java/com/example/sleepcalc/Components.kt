@@ -87,7 +87,7 @@ fun pillColors(selected: Boolean): PillColors {
     return PillColors(bg, fg, line)
 }
 
-/** Иконки для кнопок-переключателей: 0 = кровать (лечь спать), 1 = солнце (подъём). */
+/** Иконки для кнопок: 0 = кровать (лечь спать), 1 = солнце (подъём). */
 @Composable
 fun SegIcon(kind: Int, color: Color) {
     Canvas(Modifier.size(22.dp)) {
@@ -244,20 +244,44 @@ fun SwitchRow(title: String, sub: String, checked: Boolean, onChecked: (Boolean)
     }
 }
 
-/** Поле выбора времени + диалог с TimePicker. Время хранится в минутах от полуночи. */
+/**
+ * Поле выбора времени в стиле кнопок-таблеток, с иконкой (0 кровать, 1 солнце) и диалогом TimePicker.
+ * Время хранится в минутах от полуночи.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TimeField(label: String, minutes: Int, onChange: (Int) -> Unit) {
+fun TimeField(label: String, minutes: Int, icon: Int? = null, onChange: (Int) -> Unit) {
     var show by remember { mutableStateOf(false) }
-    OutlinedButton(
-        onClick = { show = true },
-        modifier = Modifier.fillMaxWidth().height(60.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    val cs = MaterialTheme.colorScheme
+    val c = pillColors(false)
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        Modifier.fillMaxWidth().height(60.dp)
+            .clip(shape)
+            .background(c.bg)
+            .border(1.dp, c.line, shape)
+            .clickable { show = true }
+            .padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, Modifier.weight(1f), fontSize = 15.sp)
-        Text(LocalTime.ofSecondOfDay(minutes * 60L).s(), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        if (icon != null) {
+            SegIcon(icon, c.fg)
+            Spacer(Modifier.width(12.dp))
+        }
+        Text(
+            label,
+            Modifier.weight(1f),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            color = cs.onSurface
+        )
+        Text(
+            LocalTime.ofSecondOfDay(minutes * 60L).s(),
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = cs.onSurface
+        )
     }
     if (show) {
         val state = rememberTimePickerState(minutes / 60, minutes % 60, is24Hour = true)
