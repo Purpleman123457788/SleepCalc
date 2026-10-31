@@ -1,5 +1,6 @@
 package com.example.sleepcalc
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -37,8 +38,16 @@ fun CyclesScreen(settings: Settings) {
             icons = listOf(0, 1)
         )
 
+        // Поле времени меняется вместе с кнопками: плавный переход «Лягу спать в» / «Хочу проснуться в»
+        Crossfade(targetState = mode, label = "timeField") { m ->
+            if (m == 0) {
+                TimeField("Лягу спать в", bedMin, icon = 0) { bedMin = it; Prefs.putInt(ctx, "cyc_bed", it) }
+            } else {
+                TimeField("Хочу проснуться в", wakeMin, icon = 1) { wakeMin = it; Prefs.putInt(ctx, "cyc_wake", it) }
+            }
+        }
+
         if (mode == 0) {
-            TimeField("Лягу спать в", bedMin) { bedMin = it; Prefs.putInt(ctx, "cyc_bed", it) }
             Text("Варианты пробуждения (+15 мин на засыпание + N×90 мин):", color = cs.onSurfaceVariant)
             wakeOpts.forEachIndexed { i, opt ->
                 OptionCard(i, opt.time.s(), opt.cycles, btnText) {
@@ -46,7 +55,6 @@ fun CyclesScreen(settings: Settings) {
                 }
             }
         } else {
-            TimeField("Хочу проснуться в", wakeMin) { wakeMin = it; Prefs.putInt(ctx, "cyc_wake", it) }
             Text("Во сколько нужно лечь (−N×90 мин −15 мин на засыпание):", color = cs.onSurfaceVariant)
             bedOpts.forEachIndexed { i, opt -> OptionCard(i, opt.time.s(), opt.cycles, null, null) }
             Button(
