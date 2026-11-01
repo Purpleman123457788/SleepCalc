@@ -93,13 +93,16 @@ fun minToTime(m: Long): LocalTime = minToZoned(m).toLocalTime()
 
 /**
  * Одна ночь сна: отбой и пробуждение (минуты с 1970 года).
- * auto = найдена автоматически, sensor = по данным датчиков Google.
+ * auto = найдена автоматически, sensor = по данным датчиков Google,
+ * rating = оценка 1..5 (0 = не оценена), tags = отметки о вечере (битовая маска).
  */
 data class Night(
     val bed: Long,
     val wake: Long,
     val auto: Boolean = false,
-    val sensor: Boolean = false
+    val sensor: Boolean = false,
+    val rating: Int = 0,
+    val tags: Int = 0
 ) {
     val minutes: Int get() = (wake - bed).toInt()
     val bedTime: LocalTime get() = minToTime(bed)
@@ -123,14 +126,17 @@ object SleepLog {
                 val b = a[0].toLongOrNull()
                 val w = a[1].toLongOrNull()
                 val t = if (a.size > 2) a[2] else ""
-                if (b != null && w != null && w > b) Night(b, w, t == "a" || t == "g", t == "g") else null
+                val r = if (a.size > 3) a[3].toIntOrNull() ?: 0 else 0
+                val g = if (a.size > 4) a[4].toIntOrNull() ?: 0 else 0
+                if (b != null && w != null && w > b) Night(b, w, t == "a" || t == "g", t == "g", r, g) else null
             } else null
         }.sortedBy { it.wake }
     }
 
     private fun save(ctx: Context, list: List<Night>) {
         val s = list.takeLast(MAX).joinToString(";") {
-            "${it.bed},${it.wake}" + if (it.sensor) ",g" else if (it.auto) ",a" else ""
+            val src = if (it.sensor) "g" else if (it.auto) "a" else ""
+            "${it.bed},${it.wake},$src,${it.rating},${it.tags}"
         }
         Prefs.sp(ctx).edit().putString(KEY, s).apply()
     }
@@ -151,7 +157,9 @@ object SleepLog {
             kotlin.math.abs(it.wake - n.wake) <= 14 * 60 || (it.bed < n.wake && n.bed < it.wake)
         }
         if (near.any { !it.auto || it.sensor }) return false
-        save(ctx, (all.filter { it !in near } + n).sortedBy { it.wake })
+        val keep = near.firstOrNull { it.rating > 0 || it.tags != 0 }
+        val nn = if (keep != null) n.copy(rating = keep.rating, tags = keep.tags) else n
+        save(ctx, (all.filter { it !in near } + nn).sortedBy { it.wake })
         return true
     }
 
@@ -163,8 +171,15 @@ object SleepLog {
             kotlin.math.abs(it.wake - n.wake) <= 14 * 60 || (it.bed < n.wake && n.bed < it.wake)
         }
         if (near.any { !it.auto }) return false
-        save(ctx, (all.filter { it !in near } + n).sortedBy { it.wake })
+        val keep = near.firstOrNull { it.rating > 0 || it.tags != 0 }
+        val nn = if (keep != null) n.copy(rating = keep.rating, tags = keep.tags) else n
+        save(ctx, (all.filter { it !in near } + nn).sortedBy { it.wake })
         return true
+    }
+
+    /** Сохраняет оценку и отметки ночи. */
+    fun update(ctx: Context, n: Night) {
+        save(ctx, load(ctx).map { if (it.bed == n.bed && it.wake == n.wake) n else it })
     }
 
     fun remove(ctx: Context, n: Night) {
