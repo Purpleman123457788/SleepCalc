@@ -1,5 +1,9 @@
 package com.example.sleepcalc
 
+import android.content.Context
+import android.content.Intent
+import android.provider.AlarmClock
+import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,6 +18,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalTime
+
+/** Запускает таймер дневного сна через приложение «Часы». */
+private fun startNap(ctx: Context, minutes: Int) {
+    try {
+        val i = Intent(AlarmClock.ACTION_SET_TIMER)
+        i.putExtra(AlarmClock.EXTRA_LENGTH, minutes * 60)
+        i.putExtra(AlarmClock.EXTRA_MESSAGE, "Дневной сон")
+        i.putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+        ctx.startActivity(i)
+        Toast.makeText(ctx, "Таймер на $minutes мин запущен", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(ctx, "Не найдено приложение «Часы»", Toast.LENGTH_LONG).show()
+    }
+}
 
 @Composable
 fun CyclesScreen(settings: Settings) {
@@ -41,9 +59,9 @@ fun CyclesScreen(settings: Settings) {
         // Поле времени меняется вместе с кнопками: плавный переход «Лягу спать в» / «Хочу проснуться в»
         Crossfade(targetState = mode, label = "timeField") { m ->
             if (m == 0) {
-                TimeField("Лягу спать в", bedMin, icon = 0) { bedMin = it; Prefs.putInt(ctx, "cyc_bed", it) }
+                TimeField("Лягу спать в", bedMin, icon = 2) { bedMin = it; Prefs.putInt(ctx, "cyc_bed", it) }
             } else {
-                TimeField("Хочу проснуться в", wakeMin, icon = 1) { wakeMin = it; Prefs.putInt(ctx, "cyc_wake", it) }
+                TimeField("Хочу проснуться в", wakeMin, icon = 2) { wakeMin = it; Prefs.putInt(ctx, "cyc_wake", it) }
             }
         }
 
@@ -61,6 +79,25 @@ fun CyclesScreen(settings: Settings) {
                 onClick = { AlarmHelper.setAlarms(ctx, LocalTime.ofSecondOfDay(wakeMin * 60L), "Подъём", settings.softMin) },
                 modifier = Modifier.fillMaxWidth().height(52.dp)
             ) { Text(if (settings.softMin > 0) "Поставить 2 будильника на утро" else "Поставить будильник на утро") }
+        }
+
+        Reveal(8) {
+            Card2 {
+                Text("Дневной сон", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(
+                    "Лучше до 15:00, чтобы не сбить ночной сон. 20 минут: бодрость без сонной инерции. 90 минут: полный цикл.",
+                    fontSize = 13.sp,
+                    color = cs.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(20, 30, 90).forEach { m ->
+                        OutlinedButton(
+                            onClick = { startNap(ctx, m) },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("$m мин") }
+                    }
+                }
+            }
         }
     }
 }
