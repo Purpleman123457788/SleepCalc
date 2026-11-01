@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -87,7 +88,7 @@ fun pillColors(selected: Boolean): PillColors {
     return PillColors(bg, fg, line)
 }
 
-/** Иконки для кнопок: 0 = кровать (лечь спать), 1 = солнце (подъём). */
+/** Иконки для кнопок и полей: 0 = кровать, 1 = солнце, 2 = часы. */
 @Composable
 fun SegIcon(kind: Int, color: Color) {
     Canvas(Modifier.size(22.dp)) {
@@ -98,7 +99,7 @@ fun SegIcon(kind: Int, color: Color) {
             drawCircle(color, radius = 0.1f * w, center = Offset(0.3f * w, 0.42f * w))
             drawRoundRect(color, Offset(0.46f * w, 0.4f * w), Size(0.5f * w, 0.14f * w), CornerRadius(0.05f * w))
             drawRoundRect(color, Offset(0.86f * w, 0.7f * w), Size(0.1f * w, 0.18f * w), CornerRadius(0.03f * w))
-        } else {
+        } else if (kind == 1) {
             val c = Offset(w / 2, w / 2)
             drawCircle(color, radius = 0.2f * w, center = c)
             for (k in 0 until 8) {
@@ -113,6 +114,11 @@ fun SegIcon(kind: Int, color: Color) {
                     cap = StrokeCap.Round
                 )
             }
+        } else {
+            val c = Offset(w / 2, w / 2)
+            drawCircle(color, radius = w * 0.44f, center = c, style = Stroke(width = w * 0.12f))
+            drawLine(color, c, Offset(w / 2, w * 0.24f), strokeWidth = w * 0.1f, cap = StrokeCap.Round)
+            drawLine(color, c, Offset(w * 0.7f, w / 2), strokeWidth = w * 0.1f, cap = StrokeCap.Round)
         }
     }
 }
@@ -245,7 +251,7 @@ fun SwitchRow(title: String, sub: String, checked: Boolean, onChecked: (Boolean)
 }
 
 /**
- * Поле выбора времени в стиле кнопок-таблеток, с иконкой (0 кровать, 1 солнце) и диалогом TimePicker.
+ * Поле выбора времени в стиле кнопок-таблеток, с иконкой (0 кровать, 1 солнце, 2 часы) и диалогом TimePicker.
  * Время хранится в минутах от полуночи.
  */
 @OptIn(ExperimentalMaterial3Api::class)
