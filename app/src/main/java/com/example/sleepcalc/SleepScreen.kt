@@ -1,9 +1,8 @@
 package com.example.sleepcalc
 
+import android.content.Context
+import android.content.Intent
 import android.widget.Toast
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -25,52 +23,34 @@ import kotlinx.coroutines.delay
 
 private val ru: Locale = Locale.forLanguageTag("ru")
 
-/** Один столбик графика. fraction от 0 до 1, good = светлый цвет. */
-data class Bar(val label: String, val value: String, val fraction: Float, val good: Boolean)
-
-@Composable
-fun BarChart(bars: List<Bar>) {
-    val cs = MaterialTheme.colorScheme
-    var go by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { go = true }
-    val maxH = 160.dp
-    val few = bars.size <= 14
-    val valueSize = if (bars.size <= 7) 11.sp else 8.sp
-
-    Row(
-        Modifier.fillMaxWidth().height(maxH + 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (few) 6.dp else 2.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        bars.forEach { b ->
-            val h by animateDpAsState(
-                targetValue = if (go) maxH * b.fraction.coerceIn(0.04f, 1f) else 0.dp,
-                animationSpec = tween(600),
-                label = "bar"
-            )
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                if (few) Text(b.value, fontSize = valueSize, maxLines = 1, softWrap = false, color = cs.onSurfaceVariant)
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    Modifier.fillMaxWidth(if (few) 0.7f else 0.8f).height(h)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (b.good) cs.primary else cs.outline)
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(b.label, fontSize = if (few) 11.sp else 9.sp, maxLines = 1, softWrap = false, color = cs.onSurfaceVariant)
-            }
+/** Отправляет сводку за неделю текстом в любой мессенджер. */
+private fun shareReport(ctx: Context, nights: List<Night>, goalMin: Int) {
+    val w = SleepStats.week(nights, goalMin)
+    val dayFmt = DateTimeFormatter.ofPattern("EEE, d MMM", ru)
+    val text = buildString {
+        append("Мой сон за неделю (SleepCalc)\n")
+        append("Ночей: ${w.count}, средний сон ${fmtDur(w.avgMin)}, долг сна ${fmtDur(w.debt)}\n")
+        append("Средний отбой ${w.avgBed?.s() ?: "--:--"}, подъём ${w.avgWake?.s() ?: "--:--"}\n\n")
+        nights.takeLast(7).forEach {
+            append("${it.wakeDate.format(dayFmt)}: ${it.bedTime.s()} → ${it.wakeTime.s()}, ${fmtDur(it.minutes)}\n")
         }
     }
+    val i = Intent(Intent.ACTION_SEND)
+    i.type = "text/plain"
+    i.putExtra(Intent.EXTRA_TEXT, text)
+    try {
+        ctx.startActivity(Intent.createChooser(i, "Поделиться отчётом"))
+    } catch (e: Exception) {
+        Toast.makeText(ctx, "Не удалось открыть список приложений", Toast.LENGTH_SHORT).show()
+    }
 }
-
-/** Минуты после 18:00 (чтобы отбой около полуночи считался «непрерывно»). */
-private fun bedOffset(t: LocalTime): Int = (t.toSecondOfDay() / 60 - 18 * 60 + 1440) % 1440
 
 @Composable
 fun SleepScreen(settings: Settings) {
     val ctx = LocalContext.current
     val view = LocalView.current
     val cs = MaterialTheme.colorScheme
+    val goal = settings.goalMin
 
     var nights by remember { mutableStateOf(SleepLog.load(ctx)) }
     var start by remember { mutableLongStateOf(SleepLog.activeStart(ctx)) }
@@ -138,13 +118,13 @@ fun SleepScreen(settings: Settings) {
         OutlinedButton(
             onClick = { showManual = !showManual },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp)
+            shape = RoundedCornerShape(20.dp)
         ) { Text(if (showManual) "Скрыть ручной ввод" else "Добавить ночь вручную") }
 
         if (showManual) {
             Card2 {
-                TimeField("Лёг спать", mBed) { mBed = it }
-                TimeField("Проснулся", mWake) { mWake = it }
+                TimeField("Лёг спать", mBed, icon = 2) { mBed = it }
+                TimeField("Проснулся", mWake, icon = 2) { mWake = it }
                 Button(
                     onClick = {
                         if (SleepLog.addManual(ctx, mBed, mWake)) {
@@ -156,6 +136,16 @@ fun SleepScreen(settings: Settings) {
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) { Text("Сохранить") }
+            }
+        }
+
+        // ---------- Оценка и последняя ночь ----------
+        if (nights.isNotEmpty()) {
+            ScoreCard(nights, goal)
+            val latest = nights.last()
+            RateCard(latest) { r, t ->
+                SleepLog.update(ctx, latest.copy(rating = r, tags = t))
+                nights = SleepLog.load(ctx)
             }
         }
 
@@ -176,13 +166,13 @@ fun SleepScreen(settings: Settings) {
         if (shown.isEmpty()) {
             Card2 {
                 Text(
-                    "Пока нет записей. Нажмите «Лёг спать» перед сном или добавьте ночь вручную.",
+                    "Пока нет записей. Нажмите «Лёг спать» перед сном или добавьте ночь вручную. Можно включить автоотслеживание в настройках.",
                     color = cs.onSurfaceVariant
                 )
             }
         } else {
             val avgDur = shown.map { it.minutes }.average().toInt()
-            val avgBedOff = shown.map { bedOffset(it.bedTime) }.average().toInt()
+            val avgBedOff = shown.map { SleepStats.bedOffset(it.bedTime) }.average().toInt()
             val avgBed = LocalTime.ofSecondOfDay((((avgBedOff + 18 * 60) % 1440) * 60).toLong())
             val avgWakeMin = shown.map { it.wakeTime.toSecondOfDay() / 60 }.average().toInt()
             val avgWake = LocalTime.ofSecondOfDay(avgWakeMin * 60L)
@@ -198,9 +188,9 @@ fun SleepScreen(settings: Settings) {
             val bars = shown.map { n ->
                 val label = n.wakeDate.format(if (days > 14) numFmt else dayFmt)
                 if (mode == 0) {
-                    Bar(label, "%.1f".format(n.minutes / 60.0), n.minutes / 720f, n.minutes >= settings.goalMin)
+                    Bar(label, "%.1f".format(n.minutes / 60.0), n.minutes / 720f, n.minutes >= goal)
                 } else {
-                    val o = bedOffset(n.bedTime)
+                    val o = SleepStats.bedOffset(n.bedTime)
                     Bar(label, n.bedTime.s(), o / 720f, o <= 360)
                 }
             }
@@ -215,15 +205,23 @@ fun SleepScreen(settings: Settings) {
                 )
             }
 
+            // ---------- Выводы и календарь ----------
+            InsightsCard(nights, goal)
+            HeatmapCard(nights, goal)
+
             // ---------- История ----------
             Card2 {
                 Text("История", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 shown.reversed().take(10).forEach { n ->
+                    val extra = buildString {
+                        if (n.rating > 0) append(" · ★${n.rating}")
+                        if (n.sensor) append(" · датчики") else if (n.auto) append(" · авто")
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(n.wakeDate.format(rowFmt), fontWeight = FontWeight.SemiBold)
                             Text(
-                                "${n.bedTime.s()} → ${n.wakeTime.s()} · ${fmtDur(n.minutes)}",
+                                "${n.bedTime.s()} → ${n.wakeTime.s()} · ${fmtDur(n.minutes)}$extra",
                                 color = cs.onSurfaceVariant
                             )
                         }
@@ -234,6 +232,12 @@ fun SleepScreen(settings: Settings) {
                     }
                 }
             }
+
+            OutlinedButton(
+                onClick = { shareReport(ctx, nights, goal) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp)
+            ) { Text("Поделиться отчётом за неделю") }
         }
     }
 }
