@@ -116,11 +116,14 @@ object SleepLog {
     private const val ACTIVE = "sleepStart"
     private const val MAX = 90
 
+    // Разобранный журнал держим в памяти, пока строка в настройках не изменилась
+    private var cacheRaw: String? = null
+    private var cacheList: List<Night> = emptyList()
+
     fun nowMin(): Long = System.currentTimeMillis() / 60000
 
-    fun load(ctx: Context): List<Night> {
-        val raw = Prefs.sp(ctx).getString(KEY, "") ?: ""
-        return raw.split(";").mapNotNull { p ->
+    private fun parse(raw: String): List<Night> =
+        raw.split(";").mapNotNull { p ->
             val a = p.split(",")
             if (a.size >= 2) {
                 val b = a[0].toLongOrNull()
@@ -131,6 +134,15 @@ object SleepLog {
                 if (b != null && w != null && w > b) Night(b, w, t == "a" || t == "g", t == "g", r, g) else null
             } else null
         }.sortedBy { it.wake }
+
+    @Synchronized
+    fun load(ctx: Context): List<Night> {
+        val raw = Prefs.sp(ctx).getString(KEY, "") ?: ""
+        if (raw == cacheRaw) return cacheList
+        val parsed = parse(raw)
+        cacheList = parsed
+        cacheRaw = raw
+        return parsed
     }
 
     private fun save(ctx: Context, list: List<Night>) {
