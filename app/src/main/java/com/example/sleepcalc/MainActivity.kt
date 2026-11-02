@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,6 +45,19 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Быстрые действия по долгому нажатию на иконку приложения
+        var startTab = 0
+        when (intent?.action) {
+            "com.example.sleepcalc.ACTION_BED" -> {
+                if (SleepLog.activeStart(this) == 0L) SleepLog.start(this)
+                Toast.makeText(this, "Сон отслеживается. Утром нажмите «Проснулся»", Toast.LENGTH_LONG).show()
+                startTab = 2
+            }
+            "com.example.sleepcalc.ACTION_SOUNDS" -> startTab = 3
+            "com.example.sleepcalc.ACTION_FORECAST" -> startTab = 1
+        }
+
         setContent {
             val ctx = LocalContext.current
             var settings by remember { mutableStateOf(Settings.load(ctx)) }
@@ -64,7 +78,7 @@ class MainActivity : ComponentActivity() {
                 LocalDensity provides Density(d.density, minOf(d.fontScale, 1.3f))
             ) {
                 SleepTheme(settings.theme, settings.style) {
-                    SleepApp(settings) { new ->
+                    SleepApp(settings, startTab) { new ->
                         settings = new
                         new.save(ctx)
                     }
@@ -75,16 +89,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        // Обновляем виджеты на рабочем столе, когда выходим из приложения
+        // Обновляем виджеты и пересчитываем напоминание, когда выходим из приложения
         SleepWidget.refreshAll(this)
+        BedtimeReminder.schedule(this)
     }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
+fun SleepApp(settings: Settings, startTab: Int, onSettingsChange: (Settings) -> Unit) {
     val ctx = LocalContext.current
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(startTab) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = showSettings) { showSettings = false }
     val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -92,6 +107,7 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
     // При запуске: уведомления, датчики сна, автозапись сна, чистка загрузок, поиск обновления
     LaunchedEffect(Unit) {
         UpdateScheduler.apply(ctx, settings.notifyUpdates)
+        BedtimeReminder.schedule(ctx)
         if (settings.notifyUpdates && Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED &&
@@ -106,7 +122,7 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
         if (settings.autoUpdate || settings.notifyUpdates) Updater.checkNow(ctx, settings.autoUpdate)
     }
 
-    val titles = listOf("Циклы сна", "Когда захочется спать", "Мой сон")
+    val titles = listOf("Циклы сна", "Когда захочется спать", "Мой сон", "Звуки для сна")
 
     // На планшетах и широких экранах контент центрируется и не растягивается
     Box(
@@ -178,7 +194,8 @@ fun SleepApp(settings: Settings, onSettingsChange: (Settings) -> Unit) {
                                         when (t) {
                                             0 -> CyclesScreen(settings)
                                             1 -> ForecastScreen(settings)
-                                            else -> SleepScreen(settings)
+                                            2 -> SleepScreen(settings)
+                                            else -> SoundsScreen(settings)
                                         }
                                     }
                                 }
