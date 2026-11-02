@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut"
+        android:shortcutId="bed"
+        android:shortcutLongLabel="@string/sc_bed_long"
+        android:shortcutShortLabel="@string/sc_bed">
+        <intent
+            android:action="com.example.sleepcalc.ACTION_BED"
+            android:targetClass="com.example.sleepcalc.MainActivity"
+            android:targetPackage="com.example.sleepcalc" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut"
+        android:shortcutId="sounds"
+        android:shortcutLongLabel="@string/sc_sounds_long"
+        android:shortcutShortLabel="@string/sc_sounds">
+        <intent
+            android:action="com.example.sleepcalc.ACTION_SOUNDS"
+            android:targetClass="com.example.sleepcalc.MainActivity"
+            android:targetPackage="com.example.sleepcalc" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut"
+        android:shortcutId="forecast"
+        android:shortcutLongLabel="@string/sc_forecast_long"
+        android:shortcutShortLabel="@string/sc_forecast">
+        <intent
+            android:action="com.example.sleepcalc.ACTION_FORECAST"
+            android:targetClass="com.example.sleepcalc.MainActivity"
+            android:targetPackage="com.example.sleepcalc" />
+    </shortcut>
+</shortcuts>
