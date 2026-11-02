@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -214,6 +215,33 @@ fun Card2(content: @Composable ColumnScope.() -> Unit) {
         shape = RoundedCornerShape(if (m) 28.dp else 20.dp),
         modifier = Modifier.fillMaxWidth()
     ) { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content) }
+}
+
+/**
+ * Главная карточка экрана: тёмный градиент, как у виджетов.
+ * В контент передаются цвета: основной текст, второстепенный текст и цвет фона (для текста на кнопках).
+ */
+@Composable
+fun HeroCard(content: @Composable ColumnScope.(Color, Color, Color) -> Unit) {
+    val m = LocalMaterialStyle.current
+    val cs = MaterialTheme.colorScheme
+    val brush = if (m) {
+        Brush.linearGradient(listOf(cs.primaryContainer, cs.secondaryContainer))
+    } else {
+        Brush.linearGradient(listOf(Color(0xFF2A2A30), Color(0xFF0B0B0D)))
+    }
+    val fg = if (m) cs.onPrimaryContainer else Color.White
+    val sub = if (m) cs.onPrimaryContainer.copy(alpha = 0.7f) else Color(0xFFA8A8B0)
+    val bg = if (m) cs.primaryContainer else Color(0xFF0B0B0D)
+    val shape = RoundedCornerShape(28.dp)
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(shape)
+            .background(brush)
+            .border(1.dp, if (m) Color.Transparent else Color(0x33FFFFFF), shape)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) { content(fg, sub, bg) }
 }
 
 /** Плавное появление блока: прозрачность и сдвиг снизу. index задаёт задержку (каскад). */
