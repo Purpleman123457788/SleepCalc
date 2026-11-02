@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_bed">Лёг спать</string>
+    <string name="sc_bed_long">Начать отслеживание сна</string>
+    <string name="sc_sounds">Звуки для сна</string>
+    <string name="sc_sounds_long">Открыть звуки для сна</string>
+    <string name="sc_forecast">Когда спать</string>
+    <string name="sc_forecast_long">Когда захочется спать</string>
+</resources>
