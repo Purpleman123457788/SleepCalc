@@ -28,18 +28,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Нижние вкладки: три одинаковые кнопки, активная выделяется цветом. */
+/** Нижние вкладки: четыре одинаковые кнопки, активная выделяется цветом. */
 @Composable
 fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val view = LocalView.current
-    val titles = listOf("Циклы", "Прогноз", "Сон")
+    val titles = listOf("Циклы", "Прогноз", "Сон", "Звуки")
     val shape = RoundedCornerShape(20.dp)
 
     Row(
         Modifier.fillMaxWidth().background(cs.background)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         titles.forEachIndexed { i, title ->
             val selected = tab == i
@@ -79,7 +79,7 @@ fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
     }
 }
 
-/** Иконки вкладок, нарисованные кодом: 0 = луна, 1 = часы, 2 = столбики. */
+/** Иконки вкладок, нарисованные кодом: 0 = луна, 1 = часы, 2 = столбики, 3 = динамик. */
 @Composable
 fun TabIcon(index: Int, color: Color) {
     Canvas(Modifier.size(22.dp)) {
@@ -101,7 +101,7 @@ fun TabIcon(index: Int, color: Color) {
                 drawLine(color, c, Offset(w / 2, w * 0.24f), strokeWidth = w * 0.1f, cap = StrokeCap.Round)
                 drawLine(color, c, Offset(w * 0.7f, w / 2), strokeWidth = w * 0.1f, cap = StrokeCap.Round)
             }
-            else -> {
+            2 -> {
                 val bar = w * 0.22f
                 val r = CornerRadius(w * 0.08f)
                 fun col(x: Float, h: Float) = drawRoundRect(
@@ -110,6 +110,28 @@ fun TabIcon(index: Int, color: Color) {
                 col(0.08f, 0.45f)
                 col(0.39f, 0.95f)
                 col(0.70f, 0.65f)
+            }
+            else -> {
+                val sp = Path().apply {
+                    moveTo(w * 0.1f, w * 0.38f)
+                    lineTo(w * 0.3f, w * 0.38f)
+                    lineTo(w * 0.5f, w * 0.2f)
+                    lineTo(w * 0.5f, w * 0.8f)
+                    lineTo(w * 0.3f, w * 0.62f)
+                    lineTo(w * 0.1f, w * 0.62f)
+                    close()
+                }
+                drawPath(sp, color)
+                drawArc(
+                    color, startAngle = -50f, sweepAngle = 100f, useCenter = false,
+                    topLeft = Offset(w * 0.3f, w * 0.28f), size = Size(w * 0.44f, w * 0.44f),
+                    style = Stroke(width = w * 0.09f, cap = StrokeCap.Round)
+                )
+                drawArc(
+                    color, startAngle = -50f, sweepAngle = 100f, useCenter = false,
+                    topLeft = Offset(w * 0.16f, w * 0.14f), size = Size(w * 0.72f, w * 0.72f),
+                    style = Stroke(width = w * 0.09f, cap = StrokeCap.Round)
+                )
             }
         }
     }
