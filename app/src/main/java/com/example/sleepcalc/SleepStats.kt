@@ -57,7 +57,7 @@ object SleepStats {
         else -> "Можно лучше"
     }
 
-    /** Сводка за последние 7 суток. */
+    /** Сводка за последние 7 суток. Серия считается только если есть свежая ночь. */
     fun week(nights: List<Night>, goalMin: Int): Week {
         val now = SleepLog.nowMin()
         val recent = nights.filter { now - it.wake <= 7 * 1440 }
@@ -75,8 +75,11 @@ object SleepStats {
         } else 0
 
         var streak = 0
-        for (n in nights.sortedByDescending { it.wake }) {
-            if (n.minutes >= goalMin - 30) streak++ else break
+        val newest = nights.maxByOrNull { it.wake }
+        if (newest != null && now - newest.wake <= 36 * 60) {
+            for (n in nights.sortedByDescending { it.wake }) {
+                if (n.minutes >= goalMin - 30) streak++ else break
+            }
         }
         val scores = recent.map { n -> score(n, goalMin, recent.filter { it != n }) }
         return Week(recent.size, avg, avgBed, avgWake, debt, sd, streak, scores.average().toInt())
